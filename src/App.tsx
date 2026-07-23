@@ -14,6 +14,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DetailPanel, Dial } from "./Dial";
 import { Server, Container, FolderGit2 } from "lucide-react";
 import { Flyout, FlyoutRow, FlyoutButton } from "./Flyout";
+import { StickyNote } from "lucide-react";
 
 type ProjectInfo = { name: string; path: string; kind: string };
 
@@ -381,6 +382,37 @@ function useVolumeActions(refresh: () => void) {
   return { removeVolume, busy };
 }
 
+function useNotes() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [notes, setNotesState] = useState("");
+  const [saved, setSaved] = useState(true);
+
+  useEffect(() => {
+    Store.load("notes.json").then(async (s) => {
+      setStore(s);
+      const saved = await s.get<string>("content").catch(() => null);
+      if (saved !== null && saved !== undefined) setNotesState(saved);
+    });
+  }, []);
+
+  const updateNotes = (value: string) => {
+    setNotesState(value);
+    setSaved(false);
+  };
+
+  // debounce writes so we're not hitting disk on every keystroke
+  useEffect(() => {
+    if (!store || saved) return;
+    const timeout = setTimeout(async () => {
+      await store.set("content", notes);
+      await store.save();
+      setSaved(true);
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [notes, store, saved]);
+
+  return { notes, updateNotes, saved };
+}
 
 
 function App() {
@@ -395,7 +427,8 @@ function App() {
   const { act: actContainer, busy: actBusy } = useContainerActions(refresh);
   const { volumes, refresh: refreshVolumes } = useDockerVolumes();
   const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
-  const {busy:portBusy,kill,ports,refresh:portRefresg}= usePorts()
+  const { busy: portBusy, kill, ports, refresh: portRefresg } = usePorts()
+  const { notes, updateNotes, saved } = useNotes();
 
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
@@ -442,7 +475,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -479,6 +512,7 @@ function App() {
               <FolderGit2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "projects" ? 1 : 0.5, color: activeDetail === "projects" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("projects")} />
               <Plug size={16} style={{ cursor: "pointer", opacity: activeDetail === "ports" ? 1 : 0.5, color: activeDetail === "ports" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("ports")} />
               <Settings size={16} style={{ cursor: "pointer", opacity: activeDetail === "settings" ? 1 : 0.5, color: activeDetail === "settings" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("settings")} />
+              <StickyNote size={16} style={{ cursor: "pointer", opacity: activeDetail === "notes" ? 1 : 0.5, color: activeDetail === "notes" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("notes")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -641,6 +675,34 @@ function App() {
                 value={opacity}
                 onChange={(e) => setOpacity(parseFloat(e.target.value))}
                 style={{ width: "100%" }}
+              />
+            </div>
+            )}
+          {activeDetail === "notes" && (
+            <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>Notes</span>
+                <span style={{ fontSize: 10, color: saved ? "rgba(255,255,255,0.3)" : "#ff9f5b" }}>
+                  {saved ? "saved" : "saving..."}
+                </span>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => updateNotes(e.target.value)}
+                placeholder="Scratchpad..."
+                style={{
+                  width: "100%",
+                  height: 220,
+                  resize: "none",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8,
+                  color: "#e8e8e8",
+                  fontSize: 12,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  padding: 10,
+                  outline: "none",
+                }}
               />
             </div>
           )}
