@@ -3,6 +3,7 @@ import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
+import { EditorPicker } from "./Flyout";
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
@@ -529,14 +530,10 @@ function App() {
                         title={p.name}
                         subtitle={p.path}
                         actions={
-                          <select
+                          <EditorPicker
                             value={prefs[p.path] ?? "vscode"}
-                            onChange={(e) => setEditorFor(p.path, e.target.value)}
-                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#e8e8e8", fontSize: 11, padding: "3px 6px" }}
-                          >
-                            <option value="vscode">VS Code</option>
-                            <option value="zed">Zed</option>
-                          </select>
+                            onChange={(editor) => setEditorFor(p.path, editor)}
+                          />
                         }
                       />
                     ))}

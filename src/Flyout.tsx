@@ -1,4 +1,43 @@
 import { ReactNode } from "react";
+const EDITORS = [
+  { id: "vscode", label: "VS", color: "#519aba" },
+  { id: "zed", label: "Z", color: "#ff9f5b" },
+];
+
+export function EditorPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {EDITORS.map((editor) => {
+        const active = value === editor.id;
+        return (
+          <div
+            key={editor.id}
+            onClick={() => onChange(editor.id)}
+            title={editor.id === "vscode" ? "VS Code" : "Zed"}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: 500,
+              cursor: "pointer",
+              background: active ? `${editor.color}26` : "rgba(255,255,255,0.05)",
+              border: active ? `1px solid ${editor.color}` : "1px solid rgba(255,255,255,0.1)",
+              color: active ? editor.color : "rgba(255,255,255,0.4)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {editor.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function Flyout({ children }: { children: ReactNode }) {
   return (
