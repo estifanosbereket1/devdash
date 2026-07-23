@@ -579,6 +579,71 @@ fn kill_port(pid: u32) -> Result<(), String> {
     }
 }
 
+#[derive(serde::Serialize, Clone)]
+struct GitStatus {
+    branch: String,
+    dirty: bool,
+    ahead: u32,
+    behind: u32,
+    has_remote: bool,
+}
+
+fn get_git_status(path: &str) -> Option<GitStatus> {
+    let git_dir = std::path::Path::new(path).join(".git");
+    if !git_dir.exists() {
+        return None; // not a git repo at all
+    }
+
+    let run = |args: &[&str]| -> Option<String> {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+
+    let branch = run(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "?".to_string());
+    let porcelain = run(&["status", "--porcelain"]).unwrap_or_default();
+    let dirty = !porcelain.is_empty();
+
+    // ahead/behind only makes sense if there's an upstream tracking branch
+    let upstream = run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+    let has_remote = upstream.is_some();
+
+    let (ahead, behind) = if has_remote {
+        run(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+            .and_then(|s| {
+                let parts: Vec<&str> = s.split_whitespace().collect();
+                if parts.len() == 2 {
+                    Some((parts[0].parse().unwrap_or(0), parts[1].parse().unwrap_or(0)))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or((0, 0))
+    } else {
+        (0, 0)
+    };
+
+    Some(GitStatus {
+        branch,
+        dirty,
+        ahead,
+        behind,
+        has_remote,
+    })
+}
+
+#[tauri::command]
+fn scan_git_status(paths: Vec<String>) -> std::collections::HashMap<String, GitStatus> {
+    paths
+        .into_iter()
+        .filter_map(|p| get_git_status(&p).map(|status| (p, status)))
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -606,7 +671,8 @@ pub fn run() {
             scan_projects,
             open_in_editor,
             list_ports,
-            kill_port
+            kill_port,
+            scan_git_status
         ])
         .setup(|app| {
             // Build the right-click menu items

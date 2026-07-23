@@ -414,6 +414,26 @@ function useNotes() {
   return { notes, updateNotes, saved };
 }
 
+type GitStatus = { branch: string; dirty: boolean; ahead: number; behind: number; has_remote: boolean };
+
+function useGitStatuses(projects: ProjectInfo[]) {
+  const [statuses, setStatuses] = useState<Record<string, GitStatus>>({});
+
+  const refresh = () => {
+    if (projects.length === 0) return;
+    invoke<Record<string, GitStatus>>("scan_git_status", { paths: projects.map((p) => p.path) })
+      .then(setStatuses);
+  };
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 15000); // git status is cheap but no need to hammer it
+    return () => clearInterval(id);
+  }, [projects]);
+
+  return { statuses, refresh };
+}
+
 
 function App() {
   const mem = useMemoryInfo();
@@ -432,6 +452,8 @@ function App() {
 
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
+  const { statuses } = useGitStatuses(projects);
+
   const { opacity, setOpacity } = useOpacitySetting();
 
   const { prefs, setEditorFor } = useEditorPreferences();
@@ -624,19 +646,28 @@ function App() {
                     <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", margin: "10px 0 4px" }}>
                       {kind}
                     </div>
-                    {group.map((p) => (
-                      <FlyoutRow
-                        key={p.path}
-                        title={p.name}
-                        subtitle={p.path}
-                        actions={
-                          <EditorPicker
-                            value={prefs[p.path] ?? "vscode"}
-                            onChange={(editor) => setEditorFor(p.path, editor)}
-                          />
-                        }
-                      />
-                    ))}
+                    {group.map((p) => {
+                      const git = statuses[p.path];
+                      return (
+                        <FlyoutRow
+                          key={p.path}
+                          title={<span onClick={() => openProject(p.path)} style={{ cursor: "pointer" }}>{p.name}</span>}
+                          subtitle={
+                            git ? (
+                              <span>
+                                <span style={{ color: git.dirty ? "#ff9f5b" : "#5eead4" }}>{git.branch}</span>
+                                {git.dirty && " · uncommitted changes"}
+                                {git.ahead > 0 && ` · ↑${git.ahead}`}
+                                {git.behind > 0 && ` · ↓${git.behind}`}
+                              </span>
+                            ) : p.path
+                          }
+                          actions={
+                            <EditorPicker value={prefs[p.path] ?? "vscode"} onChange={(editor) => setEditorFor(p.path, editor)} />
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 );
               })}

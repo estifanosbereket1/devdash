@@ -53,8 +53,8 @@ export function Flyout({ children }: { children: ReactNode }) {
 }
 
 export function FlyoutRow({ title, subtitle, status, statusColor, actions }: {
-  title: string;
-  subtitle?: string;
+  title: ReactNode;
+  subtitle?: ReactNode;
   status?: string;
   statusColor?: string;
   actions?: ReactNode;
