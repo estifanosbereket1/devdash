@@ -414,9 +414,25 @@ fn detect_kind(dir: &Path) -> Option<String> {
         } else {
             Some("JavaScript".to_string())
         }
+    } else if dir.join("go.mod").exists() {
+        Some("Go".to_string())
+    } else if dir.join("Cargo.toml").exists() {
+        Some("Rust".to_string())
+    } else if has_dotnet_project(dir) {
+        Some("C#".to_string())
     } else {
         None
     }
+}
+
+fn has_dotnet_project(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        name.ends_with(".sln") || name.ends_with(".csproj")
+    })
 }
 
 const SKIP_DIRS: &[&str] = &[

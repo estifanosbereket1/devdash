@@ -475,7 +475,7 @@ function App() {
             ))}
           </div>
 
-          {["Flutter", "TypeScript", "JavaScript", "Python"].map((kind) => {
+          {["Flutter", "TypeScript", "JavaScript", "Python", "Go", "Rust", "C#"].map((kind) => {
             const group = projects.filter((p) => p.kind === kind);
             if (group.length === 0) return null;
             return (
