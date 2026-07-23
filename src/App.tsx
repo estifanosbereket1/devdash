@@ -4,6 +4,56 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 
+import { open } from "@tauri-apps/plugin-dialog";
+import { Store } from "@tauri-apps/plugin-store";
+
+type ProjectInfo = { name: string; path: string; kind: string };
+
+function useProjectRoots() {
+  const [roots, setRoots] = useState<string[]>([]);
+  const [store, setStore] = useState<Store | null>(null);
+
+  useEffect(() => {
+    Store.load("project-roots.json").then(async (s) => {
+      setStore(s);
+      const saved = (await s.get<string[]>("roots")) ?? [];
+      setRoots(saved);
+    });
+  }, []);
+
+  const addRoot = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (!selected || !store) return;
+    const updated = [...new Set([...roots, selected as string])];
+    setRoots(updated);
+    await store.set("roots", updated);
+    await store.save();
+  };
+
+  const removeRoot = async (path: string) => {
+    if (!store) return;
+    const updated = roots.filter((r) => r !== path);
+    setRoots(updated);
+    await store.set("roots", updated);
+    await store.save();
+  };
+
+  return { roots, addRoot, removeRoot };
+}
+
+function useProjects(roots: string[]) {
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+
+  useEffect(() => {
+    if (roots.length === 0) {
+      setProjects([]);
+      return;
+    }
+    invoke<ProjectInfo[]>("scan_projects", { roots }).then(setProjects);
+  }, [roots]);
+
+  return projects;
+}
 
 type MemoryInfo = { used_gb: number; total_gb: number; ratio: number };
 
@@ -260,6 +310,10 @@ function App() {
   const { volumes, refresh: refreshVolumes } = useDockerVolumes();
   const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
 
+  const { roots, addRoot, removeRoot } = useProjectRoots();
+  const projects = useProjects(roots);
+
+  const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
   return (
     <div>
       {mem && (
@@ -377,7 +431,37 @@ function App() {
              <button disabled={volumeBusy === v.name} onClick={() => removeVolume(v.name)}>Remove</button>
            </div>
          ))}
-       </div>
+      </div>
+
+
+        <div style={{ marginTop: 16 }}>
+          <h3>Projects ({projects.length})</h3>
+          <button onClick={addRoot}>Add folder to scan</button>
+          <div style={{ fontSize: 11, opacity: 0.6, margin: "4px 0" }}>
+            {roots.map((r) => (
+              <span key={r} style={{ marginRight: 8 }}>
+                {r} <button onClick={() => removeRoot(r)}>x</button>
+              </span>
+            ))}
+          </div>
+
+          {["Flutter", "TypeScript", "JavaScript", "Python"].map((kind) => {
+            const group = projects.filter((p) => p.kind === kind);
+            if (group.length === 0) return null;
+            return (
+              <div key={kind} style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase" }}>{kind}</div>
+                {group.map((p) => (
+                  <div key={p.path} style={{ padding: "4px 0", cursor: "pointer" }} onClick={() => openProject(p.path)}>
+                    {p.name}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+
     </div>
   );
 }

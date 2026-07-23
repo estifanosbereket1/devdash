@@ -6,6 +6,7 @@ use bollard::query_parameters::{
 
 use bollard::Docker;
 use std::fs;
+use std::path::Path;
 use sysinfo::Components;
 use sysinfo::Disks;
 use sysinfo::System;
@@ -392,11 +393,111 @@ async fn remove_volume(volume_name: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize, Clone)]
+struct ProjectInfo {
+    name: String,
+    path: String,
+    kind: String,
+}
+
+fn detect_kind(dir: &Path) -> Option<String> {
+    if dir.join("pubspec.yaml").exists() {
+        Some("Flutter".to_string())
+    } else if dir.join("pyproject.toml").exists()
+        || dir.join("requirements.txt").exists()
+        || dir.join("setup.py").exists()
+    {
+        Some("Python".to_string())
+    } else if dir.join("package.json").exists() {
+        if dir.join("tsconfig.json").exists() {
+            Some("TypeScript".to_string())
+        } else {
+            Some("JavaScript".to_string())
+        }
+    } else {
+        None
+    }
+}
+
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    ".git",
+    ".dart_tool",
+    "build",
+    "dist",
+    "target",
+    "venv",
+    ".venv",
+    "__pycache__",
+];
+
+fn scan_dir(dir: &Path, depth: u8, max_depth: u8, results: &mut Vec<ProjectInfo>) {
+    if depth > max_depth {
+        return;
+    }
+
+    if let Some(kind) = detect_kind(dir) {
+        results.push(ProjectInfo {
+            name: dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            path: dir.to_string_lossy().to_string(),
+            kind,
+        });
+        return; // found a project here — don't recurse into its internals
+    }
+
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if name.starts_with('.') || SKIP_DIRS.contains(&name.as_str()) {
+            continue;
+        }
+        scan_dir(&path, depth + 1, max_depth, results);
+    }
+}
+
+#[tauri::command]
+fn scan_projects(roots: Vec<String>) -> Vec<ProjectInfo> {
+    let mut results = Vec::new();
+    for root in roots {
+        scan_dir(Path::new(&root), 0, 5, &mut results); // max_depth=5 keeps scans fast
+    }
+    results
+}
+
+#[tauri::command]
+fn open_in_editor(path: String, editor: String) -> Result<(), String> {
+    let binary = match editor.as_str() {
+        "vscode" => "code",
+        "zed" => "zed",
+        other => other, // allow passing a raw binary name directly too
+    };
+    std::process::Command::new(binary)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Failed to launch {binary}: {e}"))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             get_memory_info,
@@ -414,7 +515,9 @@ pub fn run() {
             remove_container,
             remove_image,
             list_volumes,
-            remove_volume
+            remove_volume,
+            scan_projects,
+            open_in_editor
         ])
         .setup(|app| {
             // Build the right-click menu items
