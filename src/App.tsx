@@ -6,6 +6,11 @@ import "./App.css";
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { DetailPanel, Dial } from "./Dial";
+import { Server, Container, FolderGit2 } from "lucide-react";
+import { Flyout, FlyoutRow, FlyoutButton } from "./Flyout";
 
 type ProjectInfo = { name: string; path: string; kind: string };
 
@@ -353,170 +358,195 @@ function App() {
       displayName(u).toLowerCase().includes(query)
     );
   });
+
+  const [expanded, setExpanded] = useState(false);
+
+  const toggleExpanded = async () => {
+    const win = getCurrentWindow();
+    if (!expanded) {
+      await win.setSize(new LogicalSize(720, 90));
+      // dock near top of primary screen
+      await win.setPosition(new LogicalPosition(200, 20));
+    } else {
+      await win.setSize(new LogicalSize(64, 64));
+    }
+    setExpanded(!expanded);
+  };
+
+  const [activeDetail, setActiveDetail] = useState<string | null>(null);
+
+  const toggleDetail = (id: string) => {
+    setActiveDetail((prev) => (prev === id ? null : id));
+  };
+
+  useEffect(() => {
+    if (!expanded) return;
+    const win = getCurrentWindow();
+    const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects";
+    win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
+  }, [activeDetail, expanded]);
   // const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
   return (
-    <div>
-      {mem && (
-        <div>
-          <p>{mem.used_gb.toFixed(1)} GB / {mem.total_gb.toFixed(1)} GB</p>
-          <div style={{ background: "#333", height: 8, borderRadius: 4 }}>
-            <div style={{
-              width: `${mem.ratio * 100}%`,
-              background: "#22d3ee",
-              height: "100%",
-              borderRadius: 4,
-              transition: "width 0.3s"
-            }} />
+    <div style={{ width: "100vw", height: "100vh" }}>
+      {!expanded ? (
+        <div className="orb" data-tauri-drag-region>
+          <span onClick={toggleExpanded} style={{ cursor: "pointer" }}>⚙</span>
+        </div>
+      ) : (
+        <div className="dock" style={{ flexDirection: "column", alignItems: "stretch", padding: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "0 16px", height: 90 }}>
+            <div className="dock-drag-handle" data-tauri-drag-region>⠿</div>
+
+            {mem && (
+              <Dial id="ram" ratio={mem.ratio} value={`${mem.used_gb.toFixed(0)}G`} label="RAM" active={activeDetail === "ram"} onToggle={toggleDetail} />
+            )}
+            {battery && (
+              <Dial id="batt" ratio={battery.percentage / 100} value={`${battery.percentage.toFixed(0)}%`} label="BATT" active={activeDetail === "batt"} onToggle={toggleDetail} />
+            )}
+            {temps.length > 0 && (
+              <Dial id="temp" ratio={Math.min(temps[0].celsius / 100, 1)} value={`${temps[0].celsius.toFixed(0)}°`} label="TEMP" active={activeDetail === "temp"} onToggle={toggleDetail} />
+            )}
+            {disks.length > 0 && (
+              <Dial id="disk" ratio={disks[0].used_ratio} value={`${disks[0].free_gb.toFixed(0)}G`} label="DISK" active={activeDetail === "disk"} onToggle={toggleDetail} />
+            )}
+            <Server size={16} style={{ cursor: "pointer", opacity: activeDetail === "systemd" ? 1 : 0.5, color: activeDetail === "systemd" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("systemd")} />
+            <Container size={16} style={{ cursor: "pointer", opacity: activeDetail === "docker" ? 1 : 0.5, color: activeDetail === "docker" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("docker")} />
+            <FolderGit2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "projects" ? 1 : 0.5, color: activeDetail === "projects" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("projects")} />
+            <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
+
+          {activeDetail === "ram" && mem && (
+            <DetailPanel rows={[
+              { label: "Used", value: `${mem.used_gb.toFixed(1)} GB` },
+              { label: "Total", value: `${mem.total_gb.toFixed(1)} GB` },
+            ]} />
+          )}
+          {activeDetail === "batt" && battery && (
+            <DetailPanel rows={[
+              { label: "Health", value: `${battery.capacity_health.toFixed(0)}%` },
+              { label: "Cycles", value: battery.cycle_count?.toString() ?? "—" },
+              { label: "Status", value: battery.status },
+            ]} />
+          )}
+          {activeDetail === "temp" && (
+            <DetailPanel rows={temps.slice(0, 4).map((t) => ({ label: t.label, value: `${t.celsius.toFixed(0)}°C` }))} />
+          )}
+          {activeDetail === "disk" && (
+            <DetailPanel rows={disks.map((d) => ({ label: d.mount_point, value: `${d.free_gb.toFixed(0)}G free` }))} />
+            )}
+          {activeDetail === "systemd" && (
+            <Flyout>
+              <input
+                type="text"
+                placeholder="Search services..."
+                value={unitSearch}
+                onChange={(e) => setUnitSearch(e.target.value)}
+                style={{
+                  width: "100%", marginBottom: 8, padding: "6px 8px",
+                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 6, color: "#e8e8e8", fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+                }}
+              />
+              {filteredUnits.map((u) => (
+                <FlyoutRow
+                  key={u.name}
+                  title={displayName(u)}
+                  subtitle={u.name}
+                  status={`${u.active_state} (${u.sub_state})`}
+                  statusColor={u.active_state === "active" ? "#5eead4" : u.active_state === "failed" ? "#f87171" : undefined}
+                  actions={<>
+                    <FlyoutButton disabled={busy === u.name} onClick={() => act(u.name, "start_unit")}>start</FlyoutButton>
+                    <FlyoutButton disabled={busy === u.name} onClick={() => act(u.name, "stop_unit")}>stop</FlyoutButton>
+                    <FlyoutButton disabled={busy === u.name} onClick={() => act(u.name, "restart_unit")}>restart</FlyoutButton>
+                  </>}
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "docker" && (
+            <Flyout>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 6 }}>
+                Containers
+              </div>
+              {containers.map((c) => (
+                <FlyoutRow
+                  key={c.id}
+                  title={c.name}
+                  subtitle={c.image}
+                  status={c.status}
+                  statusColor={c.state === "running" ? "#5eead4" : undefined}
+                  actions={<>
+                    <FlyoutButton disabled={actBusy === c.id} onClick={() => actContainer(c.id, c.name, "start_container")}>start</FlyoutButton>
+                    <FlyoutButton disabled={actBusy === c.id} onClick={() => actContainer(c.id, c.name, "stop_container")}>stop</FlyoutButton>
+                    <FlyoutButton disabled={actBusy === c.id} onClick={() => actContainer(c.id, c.name, "remove_container")}>remove</FlyoutButton>
+                  </>}
+                />
+              ))}
+
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", margin: "12px 0 6px" }}>
+                Images
+              </div>
+              {images.map((img) => (
+                <FlyoutRow
+                  key={img.id}
+                  title={img.tags.length > 0 ? img.tags.join(", ") : `<untagged> ${img.id}`}
+                  subtitle={`${img.size_mb.toFixed(0)} MB`}
+                  actions={<FlyoutButton disabled={imageBusy === img.id} onClick={() => removeImage(img.id, img.tags[0] ?? img.id)}>remove</FlyoutButton>}
+                />
+              ))}
+
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", margin: "12px 0 6px" }}>
+                Volumes
+              </div>
+              {volumes.map((v) => (
+                <FlyoutRow
+                  key={v.name}
+                  title={v.name}
+                  subtitle={`${v.driver} · ${v.mount_point}`}
+                  actions={<FlyoutButton disabled={volumeBusy === v.name} onClick={() => removeVolume(v.name)}>remove</FlyoutButton>}
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "projects" && (
+            <Flyout>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{roots.length} folder{roots.length !== 1 && "s"} scanned</span>
+                <FlyoutButton onClick={addRoot}>add folder</FlyoutButton>
+              </div>
+
+              {["Flutter", "TypeScript", "JavaScript", "Python", "Go", "Rust", "C#"].map((kind) => {
+                const group = projects.filter((p) => p.kind === kind);
+                if (group.length === 0) return null;
+                return (
+                  <div key={kind}>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", margin: "10px 0 4px" }}>
+                      {kind}
+                    </div>
+                    {group.map((p) => (
+                      <FlyoutRow
+                        key={p.path}
+                        title={p.name}
+                        subtitle={p.path}
+                        actions={
+                          <select
+                            value={prefs[p.path] ?? "vscode"}
+                            onChange={(e) => setEditorFor(p.path, e.target.value)}
+                            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#e8e8e8", fontSize: 11, padding: "3px 6px" }}
+                          >
+                            <option value="vscode">VS Code</option>
+                            <option value="zed">Zed</option>
+                          </select>
+                        }
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </Flyout>
+          )}
         </div>
       )}
-      <div style={{ marginTop: 16 }}>
-        <h3>Battery</h3>
-        {error && <p style={{ color: "#f87171" }}>{error}</p>}
-        {battery && (
-          <div>
-            <p>{battery.percentage.toFixed(0)}% — {battery.status}</p>
-            <div style={{ background: "#333", height: 8, borderRadius: 4 }}>
-              <div style={{
-                width: `${battery.percentage}%`,
-                background: "#facc15",
-                height: "100%",
-                borderRadius: 4,
-                transition: "width 0.3s"
-              }} />
-            </div>
-            <p style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-              Health: {battery.capacity_health.toFixed(1)}% of design capacity
-              {battery.cycle_count !== null && ` · ${battery.cycle_count} cycles`}
-            </p>
-          </div>
-        )}
-      </div>
-      <div style={{ marginTop: 16 }}>
-           <h3>Storage</h3>
-           {disks.map((d) => (
-             <div key={d.mount_point} style={{ marginBottom: 8 }}>
-               <p>{d.mount_point} — {d.free_gb.toFixed(1)} GB free of {d.total_gb.toFixed(1)} GB</p>
-               <div style={{ background: "#333", height: 8, borderRadius: 4 }}>
-                 <div style={{ width: `${d.used_ratio * 100}%`, background: "#2dd4bf", height: "100%", borderRadius: 4 }} />
-               </div>
-             </div>
-           ))}
-         </div>
-
-         <div style={{ marginTop: 16 }}>
-           <h3>Thermal</h3>
-           {temps.length === 0 && <p style={{ opacity: 0.6 }}>No sensors detected</p>}
-           {temps.map((t) => (
-             <p key={t.label}>{t.label}: {t.celsius.toFixed(1)}°C</p>
-           ))}
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-        <h3>Services ({filteredUnits.length}{unitSearch && ` of ${units.length}`})</h3>
-        <input
-          type="text"
-          placeholder="Search services..."
-          value={unitSearch}
-          onChange={(e) => setUnitSearch(e.target.value)}
-          style={{ width: "100%", padding: 6, marginBottom: 8 }}
-        />
-        {unitError && <p style={{ color: "#f87171" }}>{unitError}</p>}
-        <div style={{ maxHeight: 400, overflowY: "auto" }}>
-          {filteredUnits.map((u) => (
-             <div key={u.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #333" }}>
-               <div>
-                 <div>{displayName(u)}</div>
-                 <div style={{ fontSize: 11, opacity: 0.5 }}>{u.name}</div>
-                 <div style={{ fontSize: 12, color: u.active_state === "active" ? "#4ade80" : u.active_state === "failed" ? "#f87171" : "#9ca3af" }}>
-                   {u.active_state} ({u.sub_state})
-                 </div>
-               </div>
-               <div style={{ display: "flex", gap: 4 }}>
-                 <button disabled={busy === u.name} onClick={() => act(u.name, "start_unit")}>Start</button>
-                 <button disabled={busy === u.name} onClick={() => act(u.name, "stop_unit")}>Stop</button>
-                 <button disabled={busy === u.name} onClick={() => act(u.name, "restart_unit")}>Restart</button>
-               </div>
-             </div>
-           ))}
-         </div>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
-         <h3>Docker Containers ({containers.length})</h3>
-         {containerError && <p style={{ color: "#f87171" }}>{containerError}</p>}
-         {containers.map((c) => (
-           <div key={c.id} style={{ padding: "6px 0", borderBottom: "1px solid #333" }}>
-             <div>{c.name} <span style={{ opacity: 0.5, fontSize: 12 }}>({c.image})</span></div>
-             <div style={{ fontSize: 12, color: c.state === "running" ? "#4ade80" : "#9ca3af" }}>{c.status}</div>
-             <div key={c.id} style={{ padding: "6px 0", borderBottom: "1px solid #333" }}>
-               <div>{c.name} <span style={{ opacity: 0.5, fontSize: 12 }}>({c.image})</span></div>
-               <div style={{ fontSize: 12, color: c.state === "running" ? "#4ade80" : "#9ca3af" }}>{c.status}</div>
-               <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                 <button disabled={busy === c.id} onClick={() => actContainer(c.id, c.name,"start_container")}>Start</button>
-                 <button disabled={busy === c.id} onClick={() => actContainer(c.id,c.name, "stop_container")}>Stop</button>
-                 <button disabled={busy === c.id} onClick={() => actContainer(c.id, c.name,"remove_container")}>Remove</button>
-               </div>
-             </div>
-           </div>
-         ))}
-
-         <h3 style={{ marginTop: 16 }}>Docker Images ({images.length})</h3>
-         {images.map((img) => (
-           <div key={img.id} style={{ padding: "6px 0", borderBottom: "1px solid #333" }}>
-             <div>{img.tags.length > 0 ? img.tags.join(", ") : `<untagged> ${img.id}`}</div>
-             <div style={{ fontSize: 12, opacity: 0.6 }}>{img.size_mb.toFixed(0)} MB</div>
-             <button disabled={imageBusy === img.id} onClick={() => removeImage(img.id, img.tags[0] ?? img.id)}>Remove</button>
-           </div>
-         ))}
-
-         <h3 style={{ marginTop: 16 }}>Docker Volumes ({volumes.length})</h3>
-         {volumes.map((v) => (
-           <div key={v.name} style={{ padding: "6px 0", borderBottom: "1px solid #333" }}>
-             <div>{v.name}</div>
-             <div style={{ fontSize: 11, opacity: 0.5 }}>{v.driver} · {v.mount_point}</div>
-             <button disabled={volumeBusy === v.name} onClick={() => removeVolume(v.name)}>Remove</button>
-           </div>
-         ))}
-      </div>
-
-
-        <div style={{ marginTop: 16 }}>
-          <h3>Projects ({projects.length})</h3>
-          <button onClick={addRoot}>Add folder to scan</button>
-          <div style={{ fontSize: 11, opacity: 0.6, margin: "4px 0" }}>
-            {roots.map((r) => (
-              <span key={r} style={{ marginRight: 8 }}>
-                {r} <button onClick={() => removeRoot(r)}>x</button>
-              </span>
-            ))}
-          </div>
-
-          {["Flutter", "TypeScript", "JavaScript", "Python", "Go", "Rust", "C#"].map((kind) => {
-            const group = projects.filter((p) => p.kind === kind);
-            if (group.length === 0) return null;
-            return (
-              <div key={kind} style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase" }}>{kind}</div>
-                {group.map((p) => (
-                  <div key={p.path} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                    <span style={{ cursor: "pointer" }} onClick={() => openProject(p.path)}>{p.name}</span>
-                    <select
-                      value={prefs[p.path] ?? "vscode"}
-                      onChange={(e) => setEditorFor(p.path, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <option value="vscode">VS Code</option>
-                      <option value="zed">Zed</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-
-
     </div>
   );
 }

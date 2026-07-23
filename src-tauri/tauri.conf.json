@@ -11,12 +11,18 @@
   },
   "app": {
     "windows": [
-      {
-        "title": "devdash",
-        "width": 800,
-        "height": 600
-      }
-    ],
+       {
+         "title": "devdash",
+         "width": 64,
+         "height": 64,
+         "transparent": true,
+         "decorations": false,
+         "alwaysOnTop": true,
+         "skipTaskbar": true,
+         "resizable": false,
+         "shadow": false
+       }
+     ],
     "security": {
       "csp": null
     }
