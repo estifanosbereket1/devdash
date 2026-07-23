@@ -6,6 +6,7 @@ import "./App.css";
 import { EditorPicker } from "./Flyout";
 import { Plug } from "lucide-react";
 import { Settings } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
@@ -434,6 +435,29 @@ function useGitStatuses(projects: ProjectInfo[]) {
   return { statuses, refresh };
 }
 
+type EnvRisk = {
+  project_path: string;
+  project_name: string;
+  env_file: string;
+  gitignored: boolean;
+  suspicious_keys: string[];
+};
+
+function useEnvRisks(projects: ProjectInfo[]) {
+  const [risks, setRisks] = useState<EnvRisk[]>([]);
+
+  const refresh = () => {
+    if (projects.length === 0) return;
+    invoke<EnvRisk[]>("scan_env_risks", { projects: projects.map((p) => [p.path, p.name]) })
+      .then(setRisks);
+  };
+
+  useEffect(() => {
+    refresh();
+  }, [projects]);
+
+  return { risks, refresh };
+}
 
 function App() {
   const mem = useMemoryInfo();
@@ -457,6 +481,8 @@ function App() {
   const { opacity, setOpacity } = useOpacitySetting();
 
   const { prefs, setEditorFor } = useEditorPreferences();
+  const { risks: envRisks } = useEnvRisks(projects);
+  const exposedCount = envRisks.filter((r) => !r.gitignored && r.suspicious_keys.length > 0).length;
 
   const openProject = (path: string) => {
     const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
@@ -497,7 +523,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports", "notes"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -535,6 +561,15 @@ function App() {
               <Plug size={16} style={{ cursor: "pointer", opacity: activeDetail === "ports" ? 1 : 0.5, color: activeDetail === "ports" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("ports")} />
               <Settings size={16} style={{ cursor: "pointer", opacity: activeDetail === "settings" ? 1 : 0.5, color: activeDetail === "settings" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("settings")} />
               <StickyNote size={16} style={{ cursor: "pointer", opacity: activeDetail === "notes" ? 1 : 0.5, color: activeDetail === "notes" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("notes")} />
+              <ShieldAlert
+                size={16}
+                style={{
+                  cursor: "pointer",
+                  opacity: activeDetail === "secrets" ? 1 : 0.5,
+                  color: activeDetail === "secrets" ? "#5eead4" : exposedCount > 0 ? "#f87171" : "#e8e8e8",
+                }}
+                onClick={() => toggleDetail("secrets")}
+              />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -736,6 +771,26 @@ function App() {
                 }}
               />
             </div>
+            )}
+          {activeDetail === "secrets" && (
+            <Flyout>
+              {envRisks.length === 0 && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No .env files found in scanned projects.</div>
+              )}
+              {envRisks.map((r) => (
+                <FlyoutRow
+                  key={r.project_path}
+                  title={r.project_name}
+                  subtitle={
+                    r.suspicious_keys.length > 0
+                      ? `${r.suspicious_keys.length} key(s) look real: ${r.suspicious_keys.join(", ")}`
+                      : "no suspicious values detected"
+                  }
+                  status={r.gitignored ? "gitignored ✓" : "NOT gitignored"}
+                  statusColor={r.gitignored ? "#5eead4" : "#f87171"}
+                />
+              ))}
+            </Flyout>
           )}
         </div>
       )}

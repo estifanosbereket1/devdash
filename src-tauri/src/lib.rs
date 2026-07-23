@@ -644,6 +644,87 @@ fn scan_git_status(paths: Vec<String>) -> std::collections::HashMap<String, GitS
         .collect()
 }
 
+#[derive(serde::Serialize, Clone)]
+struct EnvRisk {
+    project_path: String,
+    project_name: String,
+    env_file: String,
+    gitignored: bool,
+    suspicious_keys: Vec<String>,
+}
+
+fn is_gitignored(project_path: &Path, target_file: &str) -> bool {
+    // ask git directly rather than hand-parsing .gitignore syntax ourselves —
+    // git already implements the real matching rules (globs, negation, nested .gitignores)
+    std::process::Command::new("git")
+        .args(["check-ignore", target_file])
+        .current_dir(project_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn looks_like_secret(value: &str) -> bool {
+    let v = value.trim().trim_matches('"').trim_matches('\'');
+    if v.is_empty() {
+        return false;
+    }
+    let placeholder_markers = [
+        "your_",
+        "xxx",
+        "changeme",
+        "example",
+        "placeholder",
+        "<",
+        "todo",
+    ];
+    let looks_placeholder = placeholder_markers
+        .iter()
+        .any(|m| v.to_lowercase().contains(m));
+    // heuristic: long-ish, no spaces, not an obvious placeholder = probably a real key/token
+    v.len() > 12 && !v.contains(' ') && !looks_placeholder
+}
+
+fn scan_env_file(project_path: &str, project_name: &str) -> Option<EnvRisk> {
+    let dir = Path::new(project_path);
+    let env_path = dir.join(".env");
+    if !env_path.exists() {
+        return None;
+    }
+
+    let content = std::fs::read_to_string(&env_path).ok()?;
+    let mut suspicious_keys = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            if looks_like_secret(value) {
+                suspicious_keys.push(key.trim().to_string());
+            }
+        }
+    }
+
+    Some(EnvRisk {
+        project_path: project_path.to_string(),
+        project_name: project_name.to_string(),
+        env_file: ".env".to_string(),
+        gitignored: is_gitignored(dir, ".env"),
+        suspicious_keys,
+    })
+}
+
+#[tauri::command]
+fn scan_env_risks(projects: Vec<(String, String)>) -> Vec<EnvRisk> {
+    // projects: Vec of (path, name)
+    projects
+        .into_iter()
+        .filter_map(|(path, name)| scan_env_file(&path, &name))
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -672,7 +753,8 @@ pub fn run() {
             open_in_editor,
             list_ports,
             kill_port,
-            scan_git_status
+            scan_git_status,
+            scan_env_risks
         ])
         .setup(|app| {
             // Build the right-click menu items
