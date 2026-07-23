@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { EditorPicker } from "./Flyout";
+import { Plug } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
@@ -170,6 +172,35 @@ function displayName(unit: UnitInfo): string {
     : prettifyUnitName(unit.name);
 }
 
+type PortInfo = { port: number; protocol: string; pid: number | null; process: string | null };
+
+function usePorts() {
+  const [ports, setPorts] = useState<PortInfo[]>([]);
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const refresh = () => invoke<PortInfo[]>("list_ports").then(setPorts);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  const kill = async (pid: number, label: string) => {
+    const confirmed = await confirm(`Kill process on this port (${label})?`, { title: "Kill port", kind: "warning" });
+    if (!confirmed) return;
+    setBusy(pid);
+    try {
+      await invoke("kill_port", { pid });
+      refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return { ports, kill, busy, refresh };
+}
+
 function useManagedUnits() {
   const [units, setUnits] = useState<UnitInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -274,6 +305,30 @@ function useContainerActions(refresh: () => void) {
   return { act, busy, error };
 }
 
+function useOpacitySetting() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [opacity, setOpacityState] = useState(0.55);
+
+  useEffect(() => {
+    Store.load("settings.json").then(async (s) => {
+      setStore(s);
+      const saved = await s.get<number>("dockOpacity").catch(() => null);
+      if (saved !== null && saved !== undefined) setOpacityState(saved);
+    });
+  }, []);
+
+  const setOpacity = async (value: number) => {
+    setOpacityState(value);
+    document.documentElement.style.setProperty("--dock-opacity", value.toString());
+    if (store) {
+      await store.set("dockOpacity", value);
+      await store.save();
+    }
+  };
+
+  return { opacity, setOpacity };
+}
+
 function useImageActions(refresh: () => void) {
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -326,6 +381,8 @@ function useVolumeActions(refresh: () => void) {
   return { removeVolume, busy };
 }
 
+
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -338,9 +395,11 @@ function App() {
   const { act: actContainer, busy: actBusy } = useContainerActions(refresh);
   const { volumes, refresh: refreshVolumes } = useDockerVolumes();
   const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
+  const {busy:portBusy,kill,ports,refresh:portRefresg}= usePorts()
 
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
+  const { opacity, setOpacity } = useOpacitySetting();
 
   const { prefs, setEditorFor } = useEditorPreferences();
 
@@ -383,10 +442,15 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects";
+    const isFlyout = ["systemd", "docker", "projects", "ports"].includes(activeDetail ?? "");
+    // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
   // const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
+  //
+  useEffect(() => {
+    document.documentElement.style.setProperty("--dock-opacity", opacity.toString());
+  }, [opacity]);
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
       {!expanded ? (
@@ -412,7 +476,9 @@ function App() {
             )}
             <Server size={16} style={{ cursor: "pointer", opacity: activeDetail === "systemd" ? 1 : 0.5, color: activeDetail === "systemd" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("systemd")} />
             <Container size={16} style={{ cursor: "pointer", opacity: activeDetail === "docker" ? 1 : 0.5, color: activeDetail === "docker" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("docker")} />
-            <FolderGit2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "projects" ? 1 : 0.5, color: activeDetail === "projects" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("projects")} />
+              <FolderGit2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "projects" ? 1 : 0.5, color: activeDetail === "projects" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("projects")} />
+              <Plug size={16} style={{ cursor: "pointer", opacity: activeDetail === "ports" ? 1 : 0.5, color: activeDetail === "ports" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("ports")} />
+              <Settings size={16} style={{ cursor: "pointer", opacity: activeDetail === "settings" ? 1 : 0.5, color: activeDetail === "settings" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("settings")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -541,6 +607,42 @@ function App() {
                 );
               })}
             </Flyout>
+            )}
+          {activeDetail === "ports" && (
+            <Flyout>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                <FlyoutButton onClick={portRefresg}>refresh</FlyoutButton>
+              </div>
+              {ports.map((p) => (
+                <FlyoutRow
+                  key={p.port}
+                  title={`:${p.port}`}
+                  subtitle={p.process ?? "unknown process"}
+                  status={p.protocol.toUpperCase()}
+                  actions={
+                    p.pid ? (
+                      <FlyoutButton disabled={portBusy === p.pid} onClick={() => kill(p.pid!, `:${p.port} (${p.process ?? "unknown"})`)}>kill</FlyoutButton>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "settings" && (
+            <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 6 }}>
+                Dock Opacity
+              </div>
+              <input
+                type="range"
+                min="0.15"
+                max="0.9"
+                step="0.05"
+                value={opacity}
+                onChange={(e) => setOpacity(parseFloat(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </div>
           )}
         </div>
       )}
