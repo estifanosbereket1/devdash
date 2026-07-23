@@ -343,6 +343,16 @@ function App() {
     invoke("open_in_editor", { path, editor });
   };
 
+  const [unitSearch, setUnitSearch] = useState("");
+
+  const filteredUnits = units.filter((u) => {
+    if (unitSearch.trim() === "") return true;
+    const query = unitSearch.toLowerCase();
+    return (
+      u.name.toLowerCase().includes(query) ||
+      displayName(u).toLowerCase().includes(query)
+    );
+  });
   // const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
   return (
     <div>
@@ -403,10 +413,17 @@ function App() {
       </div>
 
       <div style={{ marginTop: 16 }}>
-         <h3>Services ({units.length})</h3>
-         {unitError && <p style={{ color: "#f87171" }}>{unitError}</p>}
-         <div style={{ maxHeight: 400, overflowY: "auto" }}>
-           {units.map((u) => (
+        <h3>Services ({filteredUnits.length}{unitSearch && ` of ${units.length}`})</h3>
+        <input
+          type="text"
+          placeholder="Search services..."
+          value={unitSearch}
+          onChange={(e) => setUnitSearch(e.target.value)}
+          style={{ width: "100%", padding: 6, marginBottom: 8 }}
+        />
+        {unitError && <p style={{ color: "#f87171" }}>{unitError}</p>}
+        <div style={{ maxHeight: 400, overflowY: "auto" }}>
+          {filteredUnits.map((u) => (
              <div key={u.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #333" }}>
                <div>
                  <div>{displayName(u)}</div>
