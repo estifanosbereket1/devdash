@@ -8,7 +8,7 @@ import { Plug } from "lucide-react";
 import { Settings } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
 import { Trash2 } from "lucide-react";
-
+import { Clock } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
@@ -493,6 +493,33 @@ function useEnvRisks(projects: ProjectInfo[]) {
   return { risks, refresh };
 }
 
+type CronJob = { schedule: string; command: string; human_readable: string; raw_line: string };
+
+function useCronJobs() {
+  const [jobs, setJobs] = useState<CronJob[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const refresh = () => invoke<CronJob[]>("list_cron_jobs").then(setJobs);
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const remove = async (job: CronJob) => {
+    const confirmed = await confirm(`Delete this cron job?\n${job.command}`, { title: "Delete cron job", kind: "warning" });
+    if (!confirmed) return;
+    setBusy(job.raw_line);
+    try {
+      await invoke("delete_cron_job", { rawLine: job.raw_line });
+      refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return { jobs, refresh, remove, busy };
+}
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -507,6 +534,8 @@ function App() {
   const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
   const { busy: portBusy, kill, ports, refresh: portRefresg } = usePorts()
   const { notes, updateNotes, saved } = useNotes();
+
+  const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs();
 
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
@@ -559,7 +588,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -607,6 +636,7 @@ function App() {
                 onClick={() => toggleDetail("secrets")}
               />
               <Trash2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "bloat" ? 1 : 0.5, color: activeDetail === "bloat" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("bloat")} />
+              <Clock size={16} style={{ cursor: "pointer", opacity: activeDetail === "cron" ? 1 : 0.5, color: activeDetail === "cron" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("cron")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -845,6 +875,22 @@ function App() {
                   title={`${e.project_name} / ${e.folder_name}`}
                   subtitle={`${e.size_mb.toFixed(0)} MB`}
                   actions={<FlyoutButton disabled={bloatBusy === e.path} onClick={() => pruneBloat(e.path, `${e.project_name}/${e.folder_name}`)}>prune</FlyoutButton>}
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "cron" && (
+            <Flyout>
+              {cronJobs.length === 0 && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>No cron jobs found.</div>
+              )}
+              {cronJobs.map((job) => (
+                <FlyoutRow
+                  key={job.raw_line}
+                  title={job.command}
+                  subtitle={job.human_readable}
+                  status={job.schedule}
+                  actions={<FlyoutButton disabled={cronBusy === job.raw_line} onClick={() => removeCron(job)}>delete</FlyoutButton>}
                 />
               ))}
             </Flyout>
