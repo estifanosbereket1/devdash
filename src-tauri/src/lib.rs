@@ -1,6 +1,7 @@
 use bollard::query_parameters::{
-    ListContainersOptionsBuilder, ListImagesOptionsBuilder, RemoveContainerOptionsBuilder,
-    RemoveImageOptionsBuilder, StopContainerOptionsBuilder,
+    ListContainersOptionsBuilder, ListImagesOptionsBuilder, ListVolumesOptionsBuilder,
+    RemoveContainerOptionsBuilder, RemoveImageOptionsBuilder, RemoveVolumeOptionsBuilder,
+    StopContainerOptionsBuilder,
 };
 
 use bollard::Docker;
@@ -352,6 +353,45 @@ async fn remove_image(image_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct VolumeInfo {
+    name: String,
+    driver: String,
+    mount_point: String,
+}
+
+#[tauri::command]
+async fn list_volumes() -> Result<Vec<VolumeInfo>, String> {
+    let docker = Docker::connect_with_socket_defaults().map_err(|e| e.to_string())?;
+
+    let options = ListVolumesOptionsBuilder::default().build();
+    let response = docker
+        .list_volumes(Some(options))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(response
+        .volumes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| VolumeInfo {
+            name: v.name,
+            driver: v.driver,
+            mount_point: v.mountpoint,
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn remove_volume(volume_name: String) -> Result<(), String> {
+    let docker = Docker::connect_with_socket_defaults().map_err(|e| e.to_string())?;
+    let options = RemoveVolumeOptionsBuilder::default().force(true).build();
+    docker
+        .remove_volume(&volume_name, Some(options))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -372,7 +412,9 @@ pub fn run() {
             start_container,
             stop_container,
             remove_container,
-            remove_image
+            remove_image,
+            list_volumes,
+            remove_volume
         ])
         .setup(|app| {
             // Build the right-click menu items

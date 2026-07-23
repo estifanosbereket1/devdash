@@ -213,6 +213,40 @@ function useImageActions(refresh: () => void) {
   return { removeImage, busy };
 }
 
+type VolumeInfo = { name: string; driver: string; mount_point: string };
+
+function useDockerVolumes() {
+  const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
+  const refresh = () => invoke<VolumeInfo[]>("list_volumes").then(setVolumes);
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 10000);
+    return () => clearInterval(id);
+  }, []);
+  return { volumes, refresh };
+}
+
+function useVolumeActions(refresh: () => void) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const removeVolume = async (name: string) => {
+    const confirmed = await confirm(`Remove volume "${name}"? Any data inside it is gone permanently.`, {
+      title: "Remove volume",
+      kind: "warning",
+    });
+    if (!confirmed) return;
+    setBusy(name);
+    try {
+      await invoke("remove_volume", { volumeName: name });
+      refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return { removeVolume, busy };
+}
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -222,7 +256,9 @@ function App() {
   const { images, refresh: refreshImages } = useDockerImages();
   const { removeImage, busy: imageBusy } = useImageActions(refreshImages);
   const { containers, error: containerError, refresh } = useDockerContainers();
-  const { act:actContainer, busy:actBusy } = useContainerActions(refresh);
+  const { act: actContainer, busy: actBusy } = useContainerActions(refresh);
+  const { volumes, refresh: refreshVolumes } = useDockerVolumes();
+  const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
 
   return (
     <div>
@@ -330,6 +366,15 @@ function App() {
              <div>{img.tags.length > 0 ? img.tags.join(", ") : `<untagged> ${img.id}`}</div>
              <div style={{ fontSize: 12, opacity: 0.6 }}>{img.size_mb.toFixed(0)} MB</div>
              <button disabled={imageBusy === img.id} onClick={() => removeImage(img.id, img.tags[0] ?? img.id)}>Remove</button>
+           </div>
+         ))}
+
+         <h3 style={{ marginTop: 16 }}>Docker Volumes ({volumes.length})</h3>
+         {volumes.map((v) => (
+           <div key={v.name} style={{ padding: "6px 0", borderBottom: "1px solid #333" }}>
+             <div>{v.name}</div>
+             <div style={{ fontSize: 11, opacity: 0.5 }}>{v.driver} · {v.mount_point}</div>
+             <button disabled={volumeBusy === v.name} onClick={() => removeVolume(v.name)}>Remove</button>
            </div>
          ))}
        </div>
