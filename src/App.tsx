@@ -41,6 +41,29 @@ function useProjectRoots() {
   return { roots, addRoot, removeRoot };
 }
 
+function useEditorPreferences() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [prefs, setPrefs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    Store.load("editor-preferences.json").then(async (s) => {
+      setStore(s);
+      const saved = (await s.get<Record<string, string>>("prefs")) ?? {};
+      setPrefs(saved);
+    });
+  }, []);
+
+  const setEditorFor = async (path: string, editor: string) => {
+    if (!store) return;
+    const updated = { ...prefs, [path]: editor };
+    setPrefs(updated);
+    await store.set("prefs", updated);
+    await store.save();
+  };
+
+  return { prefs, setEditorFor };
+}
+
 function useProjects(roots: string[]) {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
 
@@ -313,7 +336,14 @@ function App() {
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
 
-  const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
+  const { prefs, setEditorFor } = useEditorPreferences();
+
+  const openProject = (path: string) => {
+    const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
+    invoke("open_in_editor", { path, editor });
+  };
+
+  // const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
   return (
     <div>
       {mem && (
@@ -452,8 +482,16 @@ function App() {
               <div key={kind} style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase" }}>{kind}</div>
                 {group.map((p) => (
-                  <div key={p.path} style={{ padding: "4px 0", cursor: "pointer" }} onClick={() => openProject(p.path)}>
-                    {p.name}
+                  <div key={p.path} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                    <span style={{ cursor: "pointer" }} onClick={() => openProject(p.path)}>{p.name}</span>
+                    <select
+                      value={prefs[p.path] ?? "vscode"}
+                      onChange={(e) => setEditorFor(p.path, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="vscode">VS Code</option>
+                      <option value="zed">Zed</option>
+                    </select>
                   </div>
                 ))}
               </div>
