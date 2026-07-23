@@ -725,6 +725,71 @@ fn scan_env_risks(projects: Vec<(String, String)>) -> Vec<EnvRisk> {
         .collect()
 }
 
+const BLOAT_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    ".dart_tool",
+    "__pycache__",
+];
+
+fn dir_size(path: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let meta = entry.metadata();
+            match meta {
+                Ok(m) if m.is_dir() => dir_size(&entry.path()),
+                Ok(m) => m.len(),
+                Err(_) => 0,
+            }
+        })
+        .sum()
+}
+
+#[derive(serde::Serialize, Clone)]
+struct BloatEntry {
+    project_name: String,
+    folder_name: String,
+    path: String,
+    size_mb: f64,
+}
+
+#[tauri::command]
+fn scan_bloat(projects: Vec<(String, String)>) -> Vec<BloatEntry> {
+    let mut results = Vec::new();
+    for (project_path, project_name) in projects {
+        for &bloat_dir in BLOAT_DIRS {
+            let candidate = Path::new(&project_path).join(bloat_dir);
+            if candidate.exists() {
+                let size = dir_size(&candidate);
+                if size > 1_000_000 {
+                    // skip anything under 1MB, not worth showing
+                    results.push(BloatEntry {
+                        project_name: project_name.clone(),
+                        folder_name: bloat_dir.to_string(),
+                        path: candidate.to_string_lossy().to_string(),
+                        size_mb: size as f64 / 1e6,
+                    });
+                }
+            }
+        }
+    }
+    results.sort_by(|a, b| b.size_mb.partial_cmp(&a.size_mb).unwrap());
+    results
+}
+
+#[tauri::command]
+fn delete_bloat_dir(path: String) -> Result<(), String> {
+    std::fs::remove_dir_all(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -754,7 +819,9 @@ pub fn run() {
             list_ports,
             kill_port,
             scan_git_status,
-            scan_env_risks
+            scan_env_risks,
+            scan_bloat,
+            delete_bloat_dir
         ])
         .setup(|app| {
             // Build the right-click menu items

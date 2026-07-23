@@ -7,6 +7,7 @@ import { EditorPicker } from "./Flyout";
 import { Plug } from "lucide-react";
 import { Settings } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
@@ -101,6 +102,39 @@ function useMemoryInfo() {
   }, []);
 
   return mem;
+}
+
+type BloatEntry = { project_name: string; folder_name: string; path: string; size_mb: number };
+
+function useBloatScan(projects: ProjectInfo[]) {
+  const [entries, setEntries] = useState<BloatEntry[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const scan = async () => {
+    if (projects.length === 0) return;
+    setScanning(true);
+    try {
+      const result = await invoke<BloatEntry[]>("scan_bloat", { projects: projects.map((p) => [p.path, p.name]) });
+      setEntries(result);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const prune = async (path: string, label: string) => {
+    const confirmed = await confirm(`Delete "${label}"? This can't be undone.`, { title: "Prune folder", kind: "warning" });
+    if (!confirmed) return;
+    setBusy(path);
+    try {
+      await invoke("delete_bloat_dir", { path });
+      setEntries((prev) => prev.filter((e) => e.path !== path));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return { entries, scan, scanning, prune, busy };
 }
 
 type BatteryInfo = {
@@ -478,6 +512,8 @@ function App() {
   const projects = useProjects(roots);
   const { statuses } = useGitStatuses(projects);
 
+  const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects);
+
   const { opacity, setOpacity } = useOpacitySetting();
 
   const { prefs, setEditorFor } = useEditorPreferences();
@@ -523,7 +559,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -570,6 +606,7 @@ function App() {
                 }}
                 onClick={() => toggleDetail("secrets")}
               />
+              <Trash2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "bloat" ? 1 : 0.5, color: activeDetail === "bloat" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("bloat")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -788,6 +825,26 @@ function App() {
                   }
                   status={r.gitignored ? "gitignored ✓" : "NOT gitignored"}
                   statusColor={r.gitignored ? "#5eead4" : "#f87171"}
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "bloat" && (
+            <Flyout>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+                  {bloatEntries.length > 0
+                    ? `${(bloatEntries.reduce((sum, e) => sum + e.size_mb, 0) / 1000).toFixed(1)} GB reclaimable`
+                    : "Not scanned yet"}
+                </span>
+                <FlyoutButton onClick={scanBloat} disabled={bloatScanning}>{bloatScanning ? "scanning..." : "scan"}</FlyoutButton>
+              </div>
+              {bloatEntries.map((e) => (
+                <FlyoutRow
+                  key={e.path}
+                  title={`${e.project_name} / ${e.folder_name}`}
+                  subtitle={`${e.size_mb.toFixed(0)} MB`}
+                  actions={<FlyoutButton disabled={bloatBusy === e.path} onClick={() => pruneBloat(e.path, `${e.project_name}/${e.folder_name}`)}>prune</FlyoutButton>}
                 />
               ))}
             </Flyout>
