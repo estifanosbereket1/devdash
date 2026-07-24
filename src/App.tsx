@@ -19,6 +19,11 @@ import { Flyout, FlyoutRow, FlyoutButton } from "./Flyout";
 import { StickyNote } from "lucide-react";
 import { Music, Play, Pause } from "lucide-react";
 
+async function confirmUnless(skip: boolean, message: string, options: { title: string; kind: "warning" }) {
+  if (skip) return true;
+  return confirm(message, options);
+}
+
 type ProjectInfo = { name: string; path: string; kind: string };
 
 function useProjectRoots() {
@@ -107,7 +112,7 @@ function useMemoryInfo() {
 
 type BloatEntry = { project_name: string; folder_name: string; path: string; size_mb: number };
 
-function useBloatScan(projects: ProjectInfo[]) {
+function useBloatScan(projects: ProjectInfo[], skipConfirmations: boolean) {
   const [entries, setEntries] = useState<BloatEntry[]>([]);
   const [scanning, setScanning] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -124,7 +129,7 @@ function useBloatScan(projects: ProjectInfo[]) {
   };
 
   const prune = async (path: string, label: string) => {
-    const confirmed = await confirm(`Delete "${label}"? This can't be undone.`, { title: "Prune folder", kind: "warning" });
+    const confirmed = await confirmUnless(skipConfirmations, `Delete "${label}"? This can't be undone.`, { title: "Prune folder", kind: "warning" });
     if (!confirmed) return;
     setBusy(path);
     try {
@@ -217,7 +222,7 @@ function displayName(unit: UnitInfo): string {
 
 type PortInfo = { port: number; protocol: string; pid: number | null; process: string | null };
 
-function usePorts() {
+function usePorts(skipConfirmations: boolean) {
   const [ports, setPorts] = useState<PortInfo[]>([]);
   const [busy, setBusy] = useState<number | null>(null);
 
@@ -230,7 +235,7 @@ function usePorts() {
   }, []);
 
   const kill = async (pid: number, label: string) => {
-    const confirmed = await confirm(`Kill process on this port (${label})?`, { title: "Kill port", kind: "warning" });
+    const confirmed = await confirmUnless(skipConfirmations, `Kill process on this port (${label})?`, { title: "Kill port", kind: "warning" });
     if (!confirmed) return;
     setBusy(pid);
     try {
@@ -309,19 +314,18 @@ function useDockerImages() {
   return { images, refresh };
 }
 
-function useContainerActions(refresh: () => void) {
+function useContainerActions(refresh: () => void, skipConfirmations: boolean) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const act = async (id: string, name: string, action: "start_container" | "stop_container" | "remove_container") => {
     if (action === "remove_container") {
-      const confirmed = await confirm(
+      const confirmed = await confirmUnless(skipConfirmations,
         `Permanently remove "${name}"? This cannot be undone.`,
         { title: "Remove container", kind: "warning" }
       );
       if (!confirmed) return;
     }
-
     setBusy(id);
     try {
       await invoke(action, { containerId: id });
@@ -332,18 +336,6 @@ function useContainerActions(refresh: () => void) {
       setBusy(null);
     }
   };
-
-  // const act = async (id: string, action: "start_container" | "stop_container" | "remove_container") => {
-  //   setBusy(id);
-  //   try {
-  //     await invoke(action, { containerId: id });
-  //     refresh();
-  //   } catch (e) {
-  //     setError(e as string);
-  //   } finally {
-  //     setBusy(null);
-  //   }
-  // };
 
   return { act, busy, error };
 }
@@ -372,11 +364,11 @@ function useOpacitySetting() {
   return { opacity, setOpacity };
 }
 
-function useImageActions(refresh: () => void) {
+function useImageActions(refresh: () => void, skipConfirmations: boolean) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const removeImage = async (id: string, label: string) => {
-    const confirmed = await confirm(`Remove image "${label}"?`, { title: "Remove image", kind: "warning" });
+    const confirmed = await confirmUnless(skipConfirmations, `Remove image "${label}"?`, { title: "Remove image", kind: "warning" });
     if (!confirmed) return;
     setBusy(id);
     try {
@@ -403,14 +395,14 @@ function useDockerVolumes() {
   return { volumes, refresh };
 }
 
-function useVolumeActions(refresh: () => void) {
+function useVolumeActions(refresh: () => void, skipConfirmations: boolean) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const removeVolume = async (name: string) => {
-    const confirmed = await confirm(`Remove volume "${name}"? Any data inside it is gone permanently.`, {
-      title: "Remove volume",
-      kind: "warning",
-    });
+    const confirmed = await confirmUnless(skipConfirmations,
+      `Remove volume "${name}"? Any data inside it is gone permanently.`,
+      { title: "Remove volume", kind: "warning" }
+    );
     if (!confirmed) return;
     setBusy(name);
     try {
@@ -502,7 +494,7 @@ function useEnvRisks(projects: ProjectInfo[]) {
 
 type CronJob = { schedule: string; command: string; human_readable: string; raw_line: string };
 
-function useCronJobs() {
+function useCronJobs(skipConfirmations: boolean) {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -513,7 +505,7 @@ function useCronJobs() {
   }, []);
 
   const remove = async (job: CronJob) => {
-    const confirmed = await confirm(`Delete this cron job?\n${job.command}`, { title: "Delete cron job", kind: "warning" });
+    const confirmed = await confirmUnless(skipConfirmations, `Delete this cron job?\n${job.command}`, { title: "Delete cron job", kind: "warning" });
     if (!confirmed) return;
     setBusy(job.raw_line);
     try {
@@ -809,26 +801,27 @@ function useConfirmationsSetting() {
 
 function App() {
   const mem = useMemoryInfo();
+  const { skipConfirmations, setSkipConfirmations } = useConfirmationsSetting();
   const { battery, error } = useBatteryInfo();
   const disks = useDiskInfo();
   const temps = useTemperatures();
   const { units, error: unitError, busy, act } = useManagedUnits();
   const { images, refresh: refreshImages } = useDockerImages();
-  const { removeImage, busy: imageBusy } = useImageActions(refreshImages);
+  const { removeImage, busy: imageBusy } = useImageActions(refreshImages, skipConfirmations);
   const { containers, error: containerError, refresh } = useDockerContainers();
-  const { act: actContainer, busy: actBusy } = useContainerActions(refresh);
+  const { act: actContainer, busy: actBusy } = useContainerActions(refresh, skipConfirmations);
   const { volumes, refresh: refreshVolumes } = useDockerVolumes();
-  const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes);
-  const { busy: portBusy, kill, ports, refresh: portRefresg } = usePorts()
+  const { removeVolume, busy: volumeBusy } = useVolumeActions(refreshVolumes, skipConfirmations);
+  const { busy: portBusy, kill, ports, refresh: portRefresg } = usePorts(skipConfirmations)
   const { notes, updateNotes, saved } = useNotes();
 
-  const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs();
+  const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs(skipConfirmations);
 
   const { roots, addRoot, removeRoot } = useProjectRoots();
   const projects = useProjects(roots);
   const { statuses } = useGitStatuses(projects);
 
-  const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects);
+  const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects, skipConfirmations);
 
   const { opacity, setOpacity } = useOpacitySetting();
   const { accent, setAccent } = useAccentSetting();
@@ -842,7 +835,6 @@ function App() {
   const { current, playing, play, togglePause, setVolume, volume, position, seek, next, prev, hasNext, hasPrev, shuffle, toggleShuffle, repeat, cycleRepeat } = usePlayer();
 
   const { defaultEditor, setDefaultEditor } = useDefaultEditor();
-  const { skipConfirmations, setSkipConfirmations } = useConfirmationsSetting();
 
   // const openProject = (path: string) => {
   //   const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
