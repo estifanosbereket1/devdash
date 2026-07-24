@@ -652,7 +652,7 @@ function App() {
 
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning } = useMusicLibrary(musicRoots);
-const { current, playing, play, togglePause, setVolume, volume, position, seek } = usePlayer();
+  const { current, playing, play, togglePause, setVolume, volume, position, seek } = usePlayer();
   const openProject = (path: string) => {
     const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
     invoke("open_in_editor", { path, editor });
@@ -667,6 +667,14 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
       u.name.toLowerCase().includes(query) ||
       displayName(u).toLowerCase().includes(query)
     );
+  });
+
+  const [trackSearch, setTrackSearch] = useState("");
+
+  const filteredTracks = tracks.filter((t) => {
+    if (trackSearch.trim() === "") return true;
+    const q = trackSearch.toLowerCase();
+    return t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q) || t.album.toLowerCase().includes(q);
   });
 
   const [expanded, setExpanded] = useState(false);
@@ -914,7 +922,7 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
                 step="0.05"
                 value={opacity}
                 onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                style={{ width: "100%" }}
+                style={{ width: "100%", accentColor: "#ff9f5b" }}
               />
             </div>
             )}
@@ -1007,7 +1015,18 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <FlyoutButton onClick={addMusicRoot}>add folder</FlyoutButton>
                 <FlyoutButton onClick={scanLibrary} disabled={scanning}>{scanning ? "scanning..." : "scan"}</FlyoutButton>
-              </div>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search tracks..."
+                  value={trackSearch}
+                  onChange={(e) => setTrackSearch(e.target.value)}
+                  style={{
+                    width: "100%", marginBottom: 8, padding: "6px 8px",
+                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 6, color: "#e8e8e8", fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                 {musicRoots.map((r) => <RootChip key={r} path={r} onRemove={() => removeMusicRoot(r)} />)}
@@ -1031,7 +1050,7 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
                     <input
                       type="range" min="0" max="1" step="0.05" value={volume}
                       onChange={(e) => setVolume(parseFloat(e.target.value))}
-                      style={{ width: 70 }}
+                      style={{ width: 70, accentColor: "#ff9f5b" }}
                     />
                   </div>
 
@@ -1046,7 +1065,7 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
                       step="1"
                       value={position}
                       onChange={(e) => seek(parseFloat(e.target.value))}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, accentColor: "#ff9f5b" }}
                     />
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "'JetBrains Mono', monospace", minWidth: 28 }}>
                       {formatTime(current.duration_secs)}
@@ -1055,7 +1074,7 @@ const { current, playing, play, togglePause, setVolume, volume, position, seek }
                 </div>
               )}
 
-              {tracks.map((t) => (
+              {filteredTracks.map((t) => (
                 <FlyoutRow
                   key={t.path}
                   title={t.title}
