@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { EditorPicker, RootChip } from "./Flyout";
-import { Plug } from "lucide-react";
+import { Plug, Repeat, Repeat1, Shuffle } from "lucide-react";
 import { Settings } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
 import { Trash2 } from "lucide-react";
@@ -577,37 +577,85 @@ function useMusicLibrary(roots: string[]) {
   return { tracks, scan, scanning };
 }
 
+type RepeatMode = "off" | "all" | "one";
+
 function usePlayer() {
-  const [queue, setQueue] = useState<TrackInfo[]>([]);
-  const [queueIndex, setQueueIndex] = useState(0);
+  const [baseList, setBaseList] = useState<TrackInfo[]>([]);
+  const [order, setOrder] = useState<number[]>([]); // permutation of indices into baseList
+  const [pointer, setPointer] = useState(0); // position within `order`
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [volume, setVolumeState] = useState(1);
+  const [shuffle, setShuffleState] = useState(false);
+  const [repeat, setRepeat] = useState<RepeatMode>("off");
 
-  const current = queue[queueIndex] ?? null;
+  const current = baseList[order[pointer]] ?? null;
 
-  const playAt = async (index: number, list: TrackInfo[] = queue) => {
-    const track = list[index];
+  const shuffleIndices = (len: number, keepFirst: number): number[] => {
+    const rest = Array.from({ length: len }, (_, i) => i).filter((i) => i !== keepFirst);
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    return [keepFirst, ...rest];
+  };
+
+  const playAtPointer = async (list: TrackInfo[], newOrder: number[], newPointer: number) => {
+    const track = list[newOrder[newPointer]];
     if (!track) return;
     await invoke("play_track", { path: track.path });
-    setQueue(list);
-    setQueueIndex(index);
+    setBaseList(list);
+    setOrder(newOrder);
+    setPointer(newPointer);
     setPlaying(true);
     setPosition(0);
   };
 
-  // called when clicking a track directly — queues up the whole visible list starting from there
+  // clicking a track directly — queue the whole visible list starting from there
   const play = (track: TrackInfo, list: TrackInfo[]) => {
-    const idx = list.findIndex((t) => t.path === track.path);
-    playAt(idx >= 0 ? idx : 0, list);
+    const startIdx = list.findIndex((t) => t.path === track.path);
+    const safeStart = startIdx >= 0 ? startIdx : 0;
+    const newOrder = shuffle
+      ? shuffleIndices(list.length, safeStart)
+      : Array.from({ length: list.length }, (_, i) => i);
+    const newPointer = shuffle ? 0 : safeStart;
+    playAtPointer(list, newOrder, newPointer);
+  };
+
+  const toggleShuffle = () => {
+    const next = !shuffle;
+    setShuffleState(next);
+    if (baseList.length === 0) return;
+    const currentTrackIdx = order[pointer];
+    const newOrder = next
+      ? shuffleIndices(baseList.length, currentTrackIdx)
+      : Array.from({ length: baseList.length }, (_, i) => i);
+    setOrder(newOrder);
+    setPointer(next ? 0 : currentTrackIdx);
+  };
+
+  const cycleRepeat = () => {
+    setRepeat((r) => (r === "off" ? "all" : r === "all" ? "one" : "off"));
   };
 
   const next = () => {
-    if (queueIndex + 1 < queue.length) playAt(queueIndex + 1, queue);
+    if (repeat === "one") {
+      playAtPointer(baseList, order, pointer); // restart same track
+    } else if (pointer + 1 < order.length) {
+      playAtPointer(baseList, order, pointer + 1);
+    } else if (repeat === "all") {
+      playAtPointer(baseList, order, 0);
+    } else {
+      setPlaying(false); // reached the end, nothing to repeat
+    }
   };
 
   const prev = () => {
-    if (queueIndex > 0) playAt(queueIndex - 1, queue);
+    if (pointer > 0) {
+      playAtPointer(baseList, order, pointer - 1);
+    } else if (repeat === "all") {
+      playAtPointer(baseList, order, order.length - 1);
+    }
   };
 
   const togglePause = async () => {
@@ -629,7 +677,6 @@ function usePlayer() {
     await invoke("set_volume", { volume: v });
   };
 
-  // poll position while playing; auto-advance to the next track once this one ends
   useEffect(() => {
     if (!current || !playing) return;
     const id = setInterval(() => {
@@ -641,13 +688,14 @@ function usePlayer() {
       });
     }, 500);
     return () => clearInterval(id);
-  }, [current, playing, queue, queueIndex]);
+  }, [current, playing, order, pointer, repeat]);
 
   return {
     current, playing, play, togglePause, volume, setVolume,
     position, seek, next, prev,
-    hasNext: queueIndex + 1 < queue.length,
-    hasPrev: queueIndex > 0,
+    hasNext: repeat !== "off" || pointer + 1 < order.length,
+    hasPrev: repeat === "all" || pointer > 0,
+    shuffle, toggleShuffle, repeat, cycleRepeat,
   };
 }
 
@@ -682,7 +730,7 @@ function App() {
 
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning } = useMusicLibrary(musicRoots);
-  const { current, playing, play, togglePause, setVolume, volume, position, seek, next, prev, hasNext, hasPrev } = usePlayer();
+  const { current, playing, play, togglePause, setVolume, volume, position, seek, next, prev, hasNext, hasPrev, shuffle, toggleShuffle, repeat, cycleRepeat } = usePlayer();
   const openProject = (path: string) => {
     const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
     invoke("open_in_editor", { path, editor });
@@ -1070,9 +1118,19 @@ function App() {
                   border: "1px solid rgba(255,255,255,0.08)",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Shuffle
+                      size={14}
+                      onClick={toggleShuffle}
+                      style={{ cursor: "pointer", color: shuffle ? "#ff9f5b" : "rgba(255,255,255,0.4)" }}
+                    />
                     <FlyoutButton onClick={prev} disabled={!hasPrev}>prev</FlyoutButton>
                     <FlyoutButton onClick={togglePause}>{playing ? "pause" : "play"}</FlyoutButton>
                     <FlyoutButton onClick={next} disabled={!hasNext}>next</FlyoutButton>
+                    {repeat === "one" ? (
+                      <Repeat1 size={14} onClick={cycleRepeat} style={{ cursor: "pointer", color: "#ff9f5b" }} />
+                    ) : (
+                      <Repeat size={14} onClick={cycleRepeat} style={{ cursor: "pointer", color: repeat === "all" ? "#ff9f5b" : "rgba(255,255,255,0.4)" }} />
+                    )}
                     <div style={{ flex: 1, overflow: "hidden" }}>
                       <div style={{ fontSize: 12, color: "#e8e8e8", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
                         {current.title}
