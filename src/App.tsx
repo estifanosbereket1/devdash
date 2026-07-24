@@ -3,7 +3,7 @@ import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { EditorPicker } from "./Flyout";
+import { EditorPicker, RootChip } from "./Flyout";
 import { Plug } from "lucide-react";
 import { Settings } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
@@ -17,6 +17,7 @@ import { DetailPanel, Dial } from "./Dial";
 import { Server, Container, FolderGit2 } from "lucide-react";
 import { Flyout, FlyoutRow, FlyoutButton } from "./Flyout";
 import { StickyNote } from "lucide-react";
+import { Music, Play, Pause } from "lucide-react";
 
 type ProjectInfo = { name: string; path: string; kind: string };
 
@@ -200,6 +201,12 @@ function prettifyUnitName(name: string): string {
     .split(/[-_.]/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function formatTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function displayName(unit: UnitInfo): string {
@@ -520,6 +527,100 @@ function useCronJobs() {
   return { jobs, refresh, remove, busy };
 }
 
+type TrackInfo = { path: string; title: string; artist: string; album: string; duration_secs: number };
+
+function useMusicRoots() {
+  const [roots, setRoots] = useState<string[]>([]);
+  const [store, setStore] = useState<Store | null>(null);
+
+  useEffect(() => {
+    Store.load("music-roots.json").then(async (s) => {
+      setStore(s);
+      setRoots((await s.get<string[]>("roots")) ?? []);
+    });
+  }, []);
+
+  const addRoot = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (!selected || !store) return;
+    const updated = [...new Set([...roots, selected as string])];
+    setRoots(updated);
+    await store.set("roots", updated);
+    await store.save();
+  };
+
+  const removeMusicRoot = async (path: string) => {
+    if (!store) return;
+    const updated = roots.filter((r) => r !== path);
+    setRoots(updated);
+    await store.set("roots", updated);
+    await store.save();
+  };
+
+  return { roots, addRoot , removeMusicRoot};
+}
+
+function useMusicLibrary(roots: string[]) {
+  const [tracks, setTracks] = useState<TrackInfo[]>([]);
+  const [scanning, setScanning] = useState(false);
+
+  const scan = async () => {
+    if (roots.length === 0) return;
+    setScanning(true);
+    try {
+      setTracks(await invoke<TrackInfo[]>("scan_music_library", { roots }));
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  return { tracks, scan, scanning };
+}
+
+function usePlayer() {
+  const [current, setCurrent] = useState<TrackInfo | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [volume, setVolumeState] = useState(1);
+
+  const play = async (track: TrackInfo) => {
+    await invoke("play_track", { path: track.path });
+    setCurrent(track);
+    setPlaying(true);
+    setPosition(0);
+  };
+
+  const togglePause = async () => {
+    if (playing) {
+      await invoke("pause_playback");
+    } else {
+      await invoke("resume_playback");
+    }
+    setPlaying(!playing);
+  };
+
+  const seek = async (secs: number) => {
+    await invoke("seek_playback", { positionSecs: secs });
+    setPosition(secs); // update immediately, don't wait for next poll — feels more responsive
+  };
+
+  const setVolume = async (v: number) => {
+    setVolumeState(v);
+    await invoke("set_volume", { volume: v });
+  };
+
+  // only poll position while something's actually loaded and playing
+  useEffect(() => {
+    if (!current || !playing) return;
+    const id = setInterval(() => {
+      invoke<number>("get_playback_position").then(setPosition);
+    }, 500);
+    return () => clearInterval(id);
+  }, [current, playing]);
+
+  return { current, playing, play, togglePause, volume, setVolume, position, seek };
+}
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -549,6 +650,9 @@ function App() {
   const { risks: envRisks } = useEnvRisks(projects);
   const exposedCount = envRisks.filter((r) => !r.gitignored && r.suspicious_keys.length > 0).length;
 
+  const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
+  const { tracks, scan: scanLibrary, scanning } = useMusicLibrary(musicRoots);
+const { current, playing, play, togglePause, setVolume, volume, position, seek } = usePlayer();
   const openProject = (path: string) => {
     const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
     invoke("open_in_editor", { path, editor });
@@ -588,7 +692,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -637,6 +741,7 @@ function App() {
               />
               <Trash2 size={16} style={{ cursor: "pointer", opacity: activeDetail === "bloat" ? 1 : 0.5, color: activeDetail === "bloat" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("bloat")} />
               <Clock size={16} style={{ cursor: "pointer", opacity: activeDetail === "cron" ? 1 : 0.5, color: activeDetail === "cron" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("cron")} />
+              <Music size={16} style={{ cursor: "pointer", opacity: activeDetail === "music" ? 1 : 0.5, color: activeDetail === "music" ? "#5eead4" : "#e8e8e8" }} onClick={() => toggleDetail("music")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -735,9 +840,11 @@ function App() {
             )}
           {activeDetail === "projects" && (
             <Flyout>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{roots.length} folder{roots.length !== 1 && "s"} scanned</span>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
                 <FlyoutButton onClick={addRoot}>add folder</FlyoutButton>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {roots.map((r) => <RootChip key={r} path={r} onRemove={() => removeRoot(r)} />)}
               </div>
 
               {["Flutter", "TypeScript", "JavaScript", "Python", "Go", "Rust", "C#"].map((kind) => {
@@ -891,6 +998,75 @@ function App() {
                   subtitle={job.human_readable}
                   status={job.schedule}
                   actions={<FlyoutButton disabled={cronBusy === job.raw_line} onClick={() => removeCron(job)}>delete</FlyoutButton>}
+                />
+              ))}
+            </Flyout>
+            )}
+          {activeDetail === "music" && (
+            <Flyout>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <FlyoutButton onClick={addMusicRoot}>add folder</FlyoutButton>
+                <FlyoutButton onClick={scanLibrary} disabled={scanning}>{scanning ? "scanning..." : "scan"}</FlyoutButton>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {musicRoots.map((r) => <RootChip key={r} path={r} onRemove={() => removeMusicRoot(r)} />)}
+              </div>
+
+              {current && (
+                <div style={{
+                  display: "flex", flexDirection: "column", gap: 6,
+                  padding: "8px 10px", marginBottom: 10,
+                  background: "rgba(255,255,255,0.04)", borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <FlyoutButton onClick={togglePause}>{playing ? "pause" : "play"}</FlyoutButton>
+                    <div style={{ flex: 1, overflow: "hidden" }}>
+                      <div style={{ fontSize: 12, color: "#e8e8e8", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                        {current.title}
+                      </div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{current.artist}</div>
+                    </div>
+                    <input
+                      type="range" min="0" max="1" step="0.05" value={volume}
+                      onChange={(e) => setVolume(parseFloat(e.target.value))}
+                      style={{ width: 70 }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "'JetBrains Mono', monospace", minWidth: 28 }}>
+                      {formatTime(position)}
+                    </span>
+                    <input
+                      type="range"
+                      min="0"
+                      max={current.duration_secs || 1}
+                      step="1"
+                      value={position}
+                      onChange={(e) => seek(parseFloat(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontFamily: "'JetBrains Mono', monospace", minWidth: 28 }}>
+                      {formatTime(current.duration_secs)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {tracks.map((t) => (
+                <FlyoutRow
+                  key={t.path}
+                  title={t.title}
+                  subtitle={`${t.artist} · ${t.album}`}
+                  status={current?.path === t.path ? (playing ? "▶ playing" : "⏸ paused") : undefined}
+                  statusColor={current?.path === t.path ? "#5eead4" : undefined}
+                  actions={
+                    <FlyoutButton onClick={() => (current?.path === t.path ? togglePause() : play(t))}>
+                      {current?.path === t.path && playing ? "pause" : "play"}
+                    </FlyoutButton>
+                  }
                 />
               ))}
             </Flyout>

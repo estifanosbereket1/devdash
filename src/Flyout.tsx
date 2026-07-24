@@ -1,4 +1,6 @@
 import { ReactNode } from "react";
+import { FolderOpen, X } from "lucide-react";
+
 const EDITORS = [
   { id: "vscode", label: "VS", color: "#519aba" },
   { id: "zed", label: "Z", color: "#ff9f5b" },
@@ -38,6 +40,25 @@ export function EditorPicker({ value, onChange }: { value: string; onChange: (id
     </div>
   );
 }
+
+
+export function RootChip({ path, onRemove }: { path: string; onRemove?: () => void }) {
+  const folderName = path.split("/").filter(Boolean).pop() ?? path;
+  return (
+    <div title={path} style={{
+      display: "flex", alignItems: "center", gap: 4,
+      background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)",
+    }}>
+      <FolderOpen size={11} style={{ opacity: 0.5 }} />
+      {folderName}
+      {onRemove && (
+        <X size={11} onClick={onRemove} style={{ cursor: "pointer", opacity: 0.5, marginLeft: 2 }} />
+      )}
+    </div>
+  );
+}
+
 
 export function Flyout({ children }: { children: ReactNode }) {
   return (
