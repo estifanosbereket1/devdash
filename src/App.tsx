@@ -35,7 +35,10 @@ import { TasksPanel } from "./panels/TasksPanel";
 import { Radio } from "lucide-react";
 import { RestClientPanel } from "./panels/RestClientPanel";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest"];
+import { Database } from "lucide-react";
+import { DatabasePanel } from "./panels/DatabasePanel";
+
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database"];
 
 function App() {
   const mem = useMemoryInfo();
@@ -130,8 +133,9 @@ function App() {
             <Trash2 size={16} style={iconStyle("bloat")} onClick={() => toggleDetail("bloat")} />
             <Clock size={16} style={iconStyle("cron")} onClick={() => toggleDetail("cron")} />
             <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
-              <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
-              <Radio size={16} style={iconStyle("rest")} onClick={() => toggleDetail("rest")} />
+            <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
+            <Radio size={16} style={iconStyle("rest")} onClick={() => toggleDetail("rest")} />
+            <Database size={16} style={iconStyle("database")} onClick={() => toggleDetail("database")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -152,6 +156,7 @@ function App() {
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
           {activeDetail === "rest" && <RestClientPanel />}
+          {activeDetail === "database" && <DatabasePanel />}
         </div>
       )}
     </div>

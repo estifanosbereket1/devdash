@@ -50,3 +50,29 @@ export type SavedRequest = {
   headers: HttpHeader[];
   body: string;
 };
+
+export type DbProvider = "postgres" | "mysql" | "sqlite";
+
+export type DbConnection = {
+  id: string;
+  name: string;
+  provider: DbProvider;
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  database: string; // for sqlite, this is the file path
+};
+
+export type QueryResult = { columns: string[]; rows: string[][]; row_count: number; duration_ms: number };
+
+export type DiscoveredServer = {
+  provider: DbProvider;
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  connected: boolean;
+  databases: string[];
+  error?: string | null;
+};
