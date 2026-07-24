@@ -578,16 +578,36 @@ function useMusicLibrary(roots: string[]) {
 }
 
 function usePlayer() {
-  const [current, setCurrent] = useState<TrackInfo | null>(null);
+  const [queue, setQueue] = useState<TrackInfo[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [volume, setVolumeState] = useState(1);
 
-  const play = async (track: TrackInfo) => {
+  const current = queue[queueIndex] ?? null;
+
+  const playAt = async (index: number, list: TrackInfo[] = queue) => {
+    const track = list[index];
+    if (!track) return;
     await invoke("play_track", { path: track.path });
-    setCurrent(track);
+    setQueue(list);
+    setQueueIndex(index);
     setPlaying(true);
     setPosition(0);
+  };
+
+  // called when clicking a track directly — queues up the whole visible list starting from there
+  const play = (track: TrackInfo, list: TrackInfo[]) => {
+    const idx = list.findIndex((t) => t.path === track.path);
+    playAt(idx >= 0 ? idx : 0, list);
+  };
+
+  const next = () => {
+    if (queueIndex + 1 < queue.length) playAt(queueIndex + 1, queue);
+  };
+
+  const prev = () => {
+    if (queueIndex > 0) playAt(queueIndex - 1, queue);
   };
 
   const togglePause = async () => {
@@ -601,7 +621,7 @@ function usePlayer() {
 
   const seek = async (secs: number) => {
     await invoke("seek_playback", { positionSecs: secs });
-    setPosition(secs); // update immediately, don't wait for next poll — feels more responsive
+    setPosition(secs);
   };
 
   const setVolume = async (v: number) => {
@@ -609,16 +629,26 @@ function usePlayer() {
     await invoke("set_volume", { volume: v });
   };
 
-  // only poll position while something's actually loaded and playing
+  // poll position while playing; auto-advance to the next track once this one ends
   useEffect(() => {
     if (!current || !playing) return;
     const id = setInterval(() => {
-      invoke<number>("get_playback_position").then(setPosition);
+      invoke<number>("get_playback_position").then((pos) => {
+        setPosition(pos);
+        if (current.duration_secs > 0 && pos >= current.duration_secs - 0.5) {
+          next();
+        }
+      });
     }, 500);
     return () => clearInterval(id);
-  }, [current, playing]);
+  }, [current, playing, queue, queueIndex]);
 
-  return { current, playing, play, togglePause, volume, setVolume, position, seek };
+  return {
+    current, playing, play, togglePause, volume, setVolume,
+    position, seek, next, prev,
+    hasNext: queueIndex + 1 < queue.length,
+    hasPrev: queueIndex > 0,
+  };
 }
 
 function App() {
@@ -652,7 +682,7 @@ function App() {
 
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning } = useMusicLibrary(musicRoots);
-  const { current, playing, play, togglePause, setVolume, volume, position, seek } = usePlayer();
+  const { current, playing, play, togglePause, setVolume, volume, position, seek, next, prev, hasNext, hasPrev } = usePlayer();
   const openProject = (path: string) => {
     const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
     invoke("open_in_editor", { path, editor });
@@ -1040,7 +1070,9 @@ function App() {
                   border: "1px solid rgba(255,255,255,0.08)",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <FlyoutButton onClick={prev} disabled={!hasPrev}>prev</FlyoutButton>
                     <FlyoutButton onClick={togglePause}>{playing ? "pause" : "play"}</FlyoutButton>
+                    <FlyoutButton onClick={next} disabled={!hasNext}>next</FlyoutButton>
                     <div style={{ flex: 1, overflow: "hidden" }}>
                       <div style={{ fontSize: 12, color: "#e8e8e8", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
                         {current.title}
@@ -1082,7 +1114,7 @@ function App() {
                   status={current?.path === t.path ? (playing ? "▶ playing" : "⏸ paused") : undefined}
                   statusColor={current?.path === t.path ? "#5eead4" : undefined}
                   actions={
-                    <FlyoutButton onClick={() => (current?.path === t.path ? togglePause() : play(t))}>
+                    <FlyoutButton onClick={() => (current?.path === t.path ? togglePause() : play(t, filteredTracks))}>
                       {current?.path === t.path && playing ? "pause" : "play"}
                     </FlyoutButton>
                   }
