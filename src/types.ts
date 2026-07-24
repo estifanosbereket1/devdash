@@ -31,3 +31,11 @@ export type CronJob = { schedule: string; command: string; human_readable: strin
 export type PortInfo = { port: number; protocol: string; pid: number | null; process: string | null };
 export type TrackInfo = { path: string; title: string; artist: string; album: string; duration_secs: number };
 export type RepeatMode = "off" | "all" | "one";
+
+export type Task = {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  time: string | null; // HH:MM, optional
+  completed: boolean;
+};

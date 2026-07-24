@@ -28,7 +28,11 @@ import { BloatPanel } from "./panels/BloatPanel";
 import { CronPanel } from "./panels/CronPanel";
 import { MusicPanel } from "./panels/MusicPanel";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings"];
+import { CheckSquare } from "lucide-react";
+import { useTasks } from "./hooks/useTasks";
+import { TasksPanel } from "./panels/TasksPanel";
+
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks"];
 
 function App() {
   const mem = useMemoryInfo();
@@ -64,6 +68,8 @@ function App() {
   const { ports, kill: killPort, busy: portBusy, refresh: refreshPorts } = usePorts(skipConfirmations);
   const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs(skipConfirmations);
   const { notes, updateNotes, saved: notesSaved } = useNotes();
+
+  const { tasks, addTask, toggleTask, deleteTask } = useTasks();
 
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning: musicScanning } = useMusicLibrary(musicRoots);
@@ -120,7 +126,8 @@ function App() {
             <ShieldAlert size={16} style={{ ...iconStyle("secrets"), color: activeDetail === "secrets" ? "#5eead4" : exposedCount > 0 ? "#f87171" : "#e8e8e8" }} onClick={() => toggleDetail("secrets")} />
             <Trash2 size={16} style={iconStyle("bloat")} onClick={() => toggleDetail("bloat")} />
             <Clock size={16} style={iconStyle("cron")} onClick={() => toggleDetail("cron")} />
-            <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
+              <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
+              <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -139,6 +146,7 @@ function App() {
           {activeDetail === "bloat" && <BloatPanel entries={bloatEntries} scan={scanBloat} scanning={bloatScanning} prune={pruneBloat} busy={bloatBusy} />}
           {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} />}
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
+          {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
         </div>
       )}
     </div>
