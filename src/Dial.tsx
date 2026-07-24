@@ -24,7 +24,7 @@ export function Dial({ id, ratio, label, value, size = 56, active, onToggle }: D
     >
       <svg width={size} height={size} style={{ transform: "rotate(135deg)" }}>
         <circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={4} strokeDasharray={`${arcLength} ${circumference}`} strokeLinecap="round" />
-        <circle cx={center} cy={center} r={radius} fill="none" stroke={active ? "#5eeatd4" : "#ff9f5b"} strokeWidth={4} strokeDasharray={`${arcLength} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.4s ease, stroke 0.2s ease" }} />
+        <circle cx={center} cy={center} r={radius} fill="none" stroke={active ? "#5eead4" : "var(--accent)"} strokeWidth={4} strokeDasharray={`${arcLength} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" style={{ transition: "stroke-dashoffset 0.4s ease, stroke 0.2s ease" }} />
       </svg>
       <div style={{ marginTop: -size * 0.55, textAlign: "center" }}>
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 500, color: "#e8e8e8" }}>{value}</div>

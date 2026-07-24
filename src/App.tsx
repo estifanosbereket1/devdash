@@ -724,6 +724,41 @@ function usePlayer() {
   };
 }
 
+const ACCENT_PRESETS = [
+  { name: "Amber", value: "#ff9f5b" },
+  { name: "Teal", value: "#5eead4" },
+  { name: "Violet", value: "#a78bfa" },
+  { name: "Rose", value: "#fb7185" },
+  { name: "Sky", value: "#38bdf8" },
+];
+
+function useAccentSetting() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [accent, setAccentState] = useState("#ff9f5b");
+
+  useEffect(() => {
+    Store.load("settings.json").then(async (s) => {
+      setStore(s);
+      const saved = await s.get<string>("accentColor").catch(() => null);
+      if (saved) setAccentState(saved);
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--accent", accent);
+  }, [accent]);
+
+  const setAccent = async (value: string) => {
+    setAccentState(value);
+    if (store) {
+      await store.set("accentColor", value);
+      await store.save();
+    }
+  };
+
+  return { accent, setAccent };
+}
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -748,6 +783,7 @@ function App() {
   const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects);
 
   const { opacity, setOpacity } = useOpacitySetting();
+  const { accent, setAccent } = useAccentSetting();
 
   const { prefs, setEditorFor } = useEditorPreferences();
   const { risks: envRisks } = useEnvRisks(projects);
@@ -1019,17 +1055,36 @@ function App() {
                 Dock Opacity
               </div>
               <input
-                type="range"
-                min="0.15"
-                max="0.9"
-                step="0.05"
-                value={opacity}
+                type="range" min="0.15" max="0.9" step="0.05" value={opacity}
                 onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                style={{ width: "100%", accentColor: "#ff9f5b" }}
+                style={{ width: "100%", accentColor: "var(--accent)" }}
               />
+
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", margin: "14px 0 6px" }}>
+                Accent Color
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {ACCENT_PRESETS.map((preset) => (
+                  <div
+                    key={preset.value}
+                    onClick={() => setAccent(preset.value)}
+                    title={preset.name}
+                    style={{
+                      width: 22, height: 22, borderRadius: "50%",
+                      background: preset.value,
+                      cursor: "pointer",
+                      border: accent === preset.value ? "2px solid white" : "2px solid transparent",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-            )}
-          {activeDetail === "notes" && (
+          )}
+
+
+
+            {activeDetail === "notes" && (
             <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>Notes</span>
