@@ -22,6 +22,7 @@ use rodio::Player;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::Mutex;
+use std::time::Instant;
 
 struct AudioState {
     _sink: MixerDeviceSink, // must stay alive for the whole app — dropping it kills audio output
@@ -1052,6 +1053,52 @@ fn seek_playback(state: tauri::State<AudioState>, position_secs: f64) -> Result<
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct HttpResponseInfo {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: String,
+    duration_ms: u64,
+}
+
+#[tauri::command]
+async fn send_http_request(
+    method: String,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+) -> Result<HttpResponseInfo, String> {
+    let client = reqwest::Client::new();
+    let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
+
+    let mut request = client.request(method, &url);
+    for (key, value) in headers {
+        request = request.header(key, value);
+    }
+    if let Some(b) = body {
+        request = request.body(b);
+    }
+
+    let start = Instant::now();
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let status = response.status().as_u16();
+    let response_headers: Vec<(String, String)> = response
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    let body = response.text().await.map_err(|e| e.to_string())?;
+
+    Ok(HttpResponseInfo {
+        status,
+        headers: response_headers,
+        body,
+        duration_ms,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1094,7 +1141,8 @@ pub fn run() {
             stop_playback,
             set_volume,
             get_playback_position,
-            seek_playback
+            seek_playback,
+            send_http_request
         ])
         .setup(|app| {
             // Build the right-click menu items

@@ -32,7 +32,10 @@ import { CheckSquare } from "lucide-react";
 import { useTasks } from "./hooks/useTasks";
 import { TasksPanel } from "./panels/TasksPanel";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks"];
+import { Radio } from "lucide-react";
+import { RestClientPanel } from "./panels/RestClientPanel";
+
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest"];
 
 function App() {
   const mem = useMemoryInfo();
@@ -81,7 +84,7 @@ function App() {
   const toggleExpanded = async () => {
     const win = getCurrentWindow();
     if (!expanded) {
-      await win.setSize(new LogicalSize(720, 90));
+      await win.setSize(new LogicalSize(820, 90));
       await win.setPosition(new LogicalPosition(200, 20));
     } else {
       await win.setSize(new LogicalSize(64, 64));
@@ -94,7 +97,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const isFlyout = FLYOUT_PANELS.includes(activeDetail ?? "");
-    getCurrentWindow().setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
+    getCurrentWindow().setSize(new LogicalSize(820, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
 
   useEffect(() => {
@@ -126,8 +129,9 @@ function App() {
             <ShieldAlert size={16} style={{ ...iconStyle("secrets"), color: activeDetail === "secrets" ? "#5eead4" : exposedCount > 0 ? "#f87171" : "#e8e8e8" }} onClick={() => toggleDetail("secrets")} />
             <Trash2 size={16} style={iconStyle("bloat")} onClick={() => toggleDetail("bloat")} />
             <Clock size={16} style={iconStyle("cron")} onClick={() => toggleDetail("cron")} />
-              <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
+            <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
               <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
+              <Radio size={16} style={iconStyle("rest")} onClick={() => toggleDetail("rest")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -147,6 +151,7 @@ function App() {
           {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} />}
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
+          {activeDetail === "rest" && <RestClientPanel />}
         </div>
       )}
     </div>

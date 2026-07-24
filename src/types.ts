@@ -39,3 +39,14 @@ export type Task = {
   time: string | null; // HH:MM, optional
   completed: boolean;
 };
+
+export type HttpHeader = { key: string; value: string };
+export type HttpResponse = { status: number; headers: [string, string][]; body: string; duration_ms: number };
+export type SavedRequest = {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: HttpHeader[];
+  body: string;
+};
