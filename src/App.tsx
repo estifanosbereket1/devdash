@@ -759,6 +759,54 @@ function useAccentSetting() {
   return { accent, setAccent };
 }
 
+function useDefaultEditor() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [defaultEditor, setDefaultEditorState] = useState("vscode");
+
+  useEffect(() => {
+    Store.load("settings.json").then(async (s) => {
+      setStore(s);
+      const saved = await s.get<string>("defaultEditor").catch(() => null);
+      if (saved) setDefaultEditorState(saved);
+    });
+  }, []);
+
+  const setDefaultEditor = async (value: string) => {
+    setDefaultEditorState(value);
+    if (store) {
+      await store.set("defaultEditor", value);
+      await store.save();
+    }
+  };
+
+  return { defaultEditor, setDefaultEditor };
+}
+
+
+function useConfirmationsSetting() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [skipConfirmations, setSkipState] = useState(false);
+
+  useEffect(() => {
+    Store.load("settings.json").then(async (s) => {
+      setStore(s);
+      const saved = await s.get<boolean>("skipConfirmations").catch(() => null);
+      if (saved !== null && saved !== undefined) setSkipState(saved);
+    });
+  }, []);
+
+  const setSkipConfirmations = async (value: boolean) => {
+    setSkipState(value);
+    if (store) {
+      await store.set("skipConfirmations", value);
+      await store.save();
+    }
+  };
+
+  return { skipConfirmations, setSkipConfirmations };
+}
+
+
 function App() {
   const mem = useMemoryInfo();
   const { battery, error } = useBatteryInfo();
@@ -792,8 +840,23 @@ function App() {
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning } = useMusicLibrary(musicRoots);
   const { current, playing, play, togglePause, setVolume, volume, position, seek, next, prev, hasNext, hasPrev, shuffle, toggleShuffle, repeat, cycleRepeat } = usePlayer();
+
+  const { defaultEditor, setDefaultEditor } = useDefaultEditor();
+  const { skipConfirmations, setSkipConfirmations } = useConfirmationsSetting();
+
+  // const openProject = (path: string) => {
+  //   const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
+  //   invoke("open_in_editor", { path, editor });
+  // };
+  //
+
+  async function confirmUnless(skip: boolean, message: string, options: { title: string; kind: "warning" }) {
+    if (skip) return true;
+    return confirm(message, options);
+  }
+
   const openProject = (path: string) => {
-    const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
+    const editor = prefs[path] ?? defaultEditor;
     invoke("open_in_editor", { path, editor });
   };
 
@@ -839,7 +902,7 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const win = getCurrentWindow();
-    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music"].includes(activeDetail ?? "");
+    const isFlyout = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings"].includes(activeDetail ?? "");
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
@@ -1049,8 +1112,9 @@ function App() {
               ))}
             </Flyout>
             )}
+
           {activeDetail === "settings" && (
-            <div style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <Flyout>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 6 }}>
                 Dock Opacity
               </div>
@@ -1079,7 +1143,30 @@ function App() {
                   />
                 ))}
               </div>
-            </div>
+
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", margin: "14px 0 6px" }}>
+                Default Editor
+              </div>
+              <EditorPicker value={defaultEditor} onChange={setDefaultEditor} />
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Skip confirmation dialogs</span>
+                <div
+                  onClick={() => setSkipConfirmations(!skipConfirmations)}
+                  style={{
+                    width: 34, height: 18, borderRadius: 9, cursor: "pointer",
+                    background: skipConfirmations ? "var(--accent)" : "rgba(255,255,255,0.15)",
+                    position: "relative", transition: "background 0.15s ease",
+                  }}
+                >
+                  <div style={{
+                    width: 14, height: 14, borderRadius: "50%", background: "white",
+                    position: "absolute", top: 2, left: skipConfirmations ? 18 : 2,
+                    transition: "left 0.15s ease",
+                  }} />
+                </div>
+              </div>
+            </Flyout>
           )}
 
 
