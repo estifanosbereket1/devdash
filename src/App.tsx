@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { EditorPicker, RootChip } from "./Flyout";
-import { Plug, Repeat, Repeat1, Shuffle } from "lucide-react";
+import { Plug, Repeat, Repeat1, Shuffle, SkipBack, SkipForward } from "lucide-react";
 import { Settings } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
 import { Trash2 } from "lucide-react";
@@ -563,16 +563,41 @@ function useMusicRoots() {
 function useMusicLibrary(roots: string[]) {
   const [tracks, setTracks] = useState<TrackInfo[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [store, setStore] = useState<Store | null>(null);
+  const [hasLoadedCache, setHasLoadedCache] = useState(false);
+
+  useEffect(() => {
+    Store.load("music-library.json").then(async (s) => {
+      setStore(s);
+      const cached = await s.get<TrackInfo[]>("tracks").catch(() => null);
+      if (cached && cached.length > 0) {
+        setTracks(cached);
+      }
+      setHasLoadedCache(true);
+    });
+  }, []);
 
   const scan = async () => {
     if (roots.length === 0) return;
     setScanning(true);
     try {
-      setTracks(await invoke<TrackInfo[]>("scan_music_library", { roots }));
+      const result = await invoke<TrackInfo[]>("scan_music_library", { roots });
+      setTracks(result);
+      if (store) {
+        await store.set("tracks", result);
+        await store.save();
+      }
     } finally {
       setScanning(false);
     }
   };
+
+  // auto-scan once on startup, but only if we have roots and genuinely no cache to fall back on
+  useEffect(() => {
+    if (hasLoadedCache && tracks.length === 0 && roots.length > 0) {
+      scan();
+    }
+  }, [hasLoadedCache, roots]);
 
   return { tracks, scan, scanning };
 }
@@ -1123,9 +1148,21 @@ function App() {
                       onClick={toggleShuffle}
                       style={{ cursor: "pointer", color: shuffle ? "#ff9f5b" : "rgba(255,255,255,0.4)" }}
                     />
-                    <FlyoutButton onClick={prev} disabled={!hasPrev}>prev</FlyoutButton>
-                    <FlyoutButton onClick={togglePause}>{playing ? "pause" : "play"}</FlyoutButton>
-                    <FlyoutButton onClick={next} disabled={!hasNext}>next</FlyoutButton>
+                    <SkipBack
+                      size={16}
+                      onClick={hasPrev ? prev : undefined}
+                      style={{ cursor: hasPrev ? "pointer" : "default", opacity: hasPrev ? 1 : 0.3, color: "#e8e8e8" }}
+                    />
+                    {playing ? (
+                      <Pause size={18} onClick={togglePause} style={{ cursor: "pointer", color: "#ff9f5b" }} />
+                    ) : (
+                      <Play size={18} onClick={togglePause} style={{ cursor: "pointer", color: "#ff9f5b" }} />
+                    )}
+                    <SkipForward
+                      size={16}
+                      onClick={hasNext ? next : undefined}
+                      style={{ cursor: hasNext ? "pointer" : "default", opacity: hasNext ? 1 : 0.3, color: "#e8e8e8" }}
+                    />
                     {repeat === "one" ? (
                       <Repeat1 size={14} onClick={cycleRepeat} style={{ cursor: "pointer", color: "#ff9f5b" }} />
                     ) : (
