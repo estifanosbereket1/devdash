@@ -836,12 +836,6 @@ function App() {
 
   const { defaultEditor, setDefaultEditor } = useDefaultEditor();
 
-  // const openProject = (path: string) => {
-  //   const editor = prefs[path] ?? "vscode"; // default to VS Code until they pick otherwise
-  //   invoke("open_in_editor", { path, editor });
-  // };
-  //
-
   async function confirmUnless(skip: boolean, message: string, options: { title: string; kind: "warning" }) {
     if (skip) return true;
     return confirm(message, options);
@@ -898,8 +892,6 @@ function App() {
     // const isFlyout = activeDetail === "systemd" || activeDetail === "docker" || activeDetail === "projects" ||activeDetail === "ports";
     win.setSize(new LogicalSize(720, isFlyout ? 420 : activeDetail ? 150 : 90));
   }, [activeDetail, expanded]);
-  // const openProject = (path: string) => invoke("open_in_editor", { path, editor: "vscode" });
-  //
   useEffect(() => {
     document.documentElement.style.setProperty("--dock-opacity", opacity.toString());
   }, [opacity]);
