@@ -1113,16 +1113,22 @@ fn build_connection_url(
     user: &str,
     password: &str,
     database: &str,
+    sslmode: &str,
 ) -> String {
     match provider {
-        "postgres" => format!("postgres://{user}:{password}@{host}:{port}/{database}"),
+        "postgres" => {
+            if sslmode.is_empty() {
+                format!("postgres://{user}:{password}@{host}:{port}/{database}")
+            } else {
+                format!("postgres://{user}:{password}@{host}:{port}/{database}?sslmode={sslmode}")
+            }
+        }
         "mysql" => format!("mysql://{user}:{password}@{host}:{port}/{database}"),
-        "sqlite" => format!("sqlite://{database}"), // `database` holds the file path for sqlite
+        "sqlite" => format!("sqlite://{database}"),
         _ => String::new(),
     }
 }
 
-// ⬇️ ADD THESE TWO FUNCTIONS HERE ⬇️
 fn urlencoding_encode(s: &str) -> String {
     s.replace('/', "%2F")
 }
@@ -1217,9 +1223,12 @@ async fn test_db_connection(
     user: String,
     password: String,
     database: String,
+    sslmode: String,
 ) -> Result<(), String> {
     sqlx::any::install_default_drivers();
-    let url = build_connection_url(&provider, &host, &port, &user, &password, &database);
+    let url = build_connection_url(
+        &provider, &host, &port, &user, &password, &database, &sslmode,
+    );
     let pool = AnyPoolOptions::new()
         .connect(&url)
         .await
@@ -1235,6 +1244,7 @@ async fn list_databases(
     port: String,
     user: String,
     password: String,
+    sslmode: String,
 ) -> Result<Vec<String>, String> {
     sqlx::any::install_default_drivers();
     // connect to a default/admin database first, since we need *a* database to connect to before listing others
@@ -1247,14 +1257,17 @@ async fn list_databases(
                     .into(),
             ),
         };
-    let url = build_connection_url(&provider, &host, &port, &user, &password, admin_db);
+    let url = build_connection_url(
+        &provider, &host, &port, &user, &password, admin_db,
+        &sslmode, // ⬅️ use admin_db here, not &database — this fn never took a database param, it connects to the admin db to list others
+    );
     let pool = AnyPoolOptions::new()
         .connect(&url)
         .await
         .map_err(|e| e.to_string())?;
 
     let query = match provider.as_str() {
-        "postgres" => "SELECT datname FROM pg_database WHERE datistemplate = false",
+        "postgres" => "SELECT datname::text FROM pg_database WHERE datistemplate = false",
         "mysql" => "SHOW DATABASES",
         _ => unreachable!(),
     };
@@ -1279,6 +1292,7 @@ async fn list_tables(
     user: String,
     password: String,
     database: String,
+    sslmode: String,
 ) -> Result<Vec<String>, String> {
     sqlx::any::install_default_drivers();
 
@@ -1300,7 +1314,9 @@ async fn list_tables(
             .collect());
     }
 
-    let url = build_connection_url(&provider, &host, &port, &user, &password, &database);
+    let url = build_connection_url(
+        &provider, &host, &port, &user, &password, &database, &sslmode,
+    );
     let pool = AnyPoolOptions::new()
         .connect(&url)
         .await
@@ -1308,7 +1324,7 @@ async fn list_tables(
 
     let query = match provider.as_str() {
         "postgres" => {
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            "SELECT table_name::text FROM information_schema.tables WHERE table_schema = 'public'"
         }
         "mysql" => "SHOW TABLES",
         "sqlite" => {
@@ -1372,6 +1388,7 @@ async fn run_query(
     password: String,
     database: String,
     sql: String,
+    sslmode: String,
 ) -> Result<QueryResult, String> {
     sqlx::any::install_default_drivers();
 
@@ -1410,7 +1427,15 @@ async fn run_query(
             duration_ms,
         });
     }
-    let url = build_connection_url(&provider, &host, &port, &user, &password, &database);
+    let url = build_connection_url(
+        "postgres",
+        "localhost",
+        &port.to_string(),
+        &user,
+        &password,
+        "postgres",
+        "", // ⬅️ ADD THIS — local discovery, no SSL needed
+    );
     let pool = AnyPoolOptions::new()
         .connect(&url)
         .await
@@ -1590,6 +1615,7 @@ async fn discover_databases(sqlite_roots: Vec<String>) -> Vec<DiscoveredServer> 
                 &user,
                 &pass,
                 "postgres",
+                "", // ⬅️ ADD THIS — local discovery, no SSL needed
             );
             if let Ok(pool) = AnyPoolOptions::new().connect(&url).await {
                 if let Ok(rows) =
@@ -1639,6 +1665,7 @@ async fn discover_databases(sqlite_roots: Vec<String>) -> Vec<DiscoveredServer> 
                 &user,
                 &pass,
                 "mysql",
+                "", // ⬅️ ADD THIS — local discovery, no SSL needed
             );
             if let Ok(pool) = AnyPoolOptions::new().connect(&url).await {
                 if let Ok(rows) = sqlx::query("SHOW DATABASES").fetch_all(&pool).await {

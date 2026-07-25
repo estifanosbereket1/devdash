@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Store } from "@tauri-apps/plugin-store";
-import type { DbConnection, QueryResult , DiscoveredServer } from "../types";
+import type { DbConnection, QueryResult , DiscoveredServer, SavedConnection } from "../types";
 
 export function useDbConnections() {
   const [store, setStore] = useState<Store | null>(null);
@@ -54,10 +54,10 @@ export function useDbBrowser() {
   };
 
   const loadTables = async (conn: DbConnection, database: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      setTables(await invoke<string[]>("list_tables", { ...conn, database }));
+      setLoading(true);
+      setError(null);
+      try {
+        setTables(await invoke<string[]>("list_tables", { ...conn, database, sslmode: conn.sslMode ?? "" }));
     } catch (e) {
       setError(e as string);
       setTables([]);
@@ -75,10 +75,10 @@ export function useQueryRunner() {
   const [error, setError] = useState<string | null>(null);
 
   const runQuery = async (conn: DbConnection, database: string, sql: string) => {
-    setRunning(true);
-    setError(null);
-    try {
-      setResult(await invoke<QueryResult>("run_query", { ...conn, database, sql }));
+      setRunning(true);
+      setError(null);
+      try {
+        setResult(await invoke<QueryResult>("run_query", { ...conn, database, sql, sslmode: conn.sslMode ?? "" }));
     } catch (e) {
       setError(e as string);
       setResult(null);
@@ -109,4 +109,32 @@ export function useDiscoveredServers(sqliteRoots: string[]) {
   useEffect(() => { scan(); }, []);
 
   return { servers, scanning, rescan: scan };
+}
+
+export function useSavedConnections() {
+  const [store, setStore] = useState<Store | null>(null);
+  const [connections, setConnections] = useState<SavedConnection[]>([]);
+
+  useEffect(() => {
+    Store.load("remote-db-connections.json").then(async (s) => {
+      setStore(s);
+      setConnections((await s.get<SavedConnection[]>("connections")) ?? []);
+    });
+  }, []);
+
+  const persist = async (updated: SavedConnection[]) => {
+    setConnections(updated);
+    if (store) {
+      await store.set("connections", updated);
+      await store.save();
+    }
+  };
+
+  const addConnection = (conn: Omit<SavedConnection, "id">) =>
+    persist([...connections, { ...conn, id: crypto.randomUUID() }]);
+
+  const deleteConnection = (id: string) =>
+    persist(connections.filter((c) => c.id !== id));
+
+  return { connections, addConnection, deleteConnection };
 }

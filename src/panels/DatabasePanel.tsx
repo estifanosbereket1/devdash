@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useDiscoveredServers, useDbBrowser, useQueryRunner } from "../hooks/useDatabase";
-import type { DiscoveredServer, DbConnection, DbProvider } from "../types";
+import { useDiscoveredServers, useDbBrowser, useQueryRunner, useSavedConnections } from "../hooks/useDatabase";
+import type { DiscoveredServer, DbConnection, DbProvider, SavedConnection } from "../types";
 import { Flyout, FlyoutButton } from "../Flyout";
+import { invoke } from "@tauri-apps/api/core";
 
 const PROVIDER_COLORS: Record<DbProvider, string> = {
   postgres: "#5eead4", mysql: "#ff9f5b", sqlite: "#a78bfa",
@@ -11,20 +12,110 @@ const PROVIDER_LABELS: Record<DbProvider, string> = {
 };
 const PROVIDER_ORDER: DbProvider[] = ["postgres", "mysql", "sqlite"];
 
+function RemoteConnectionForm({
+  onSave, onCancel, testing, testError,
+}: {
+  onSave: (c: Omit<SavedConnection, "id">) => Promise<void>;
+  onCancel: () => void;
+  testing: boolean;
+  testError: string | null;
+}) {
+  const [provider, setProvider] = useState<DbProvider>("postgres");
+  const [name, setName] = useState("");
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("5432");
+  const [user, setUser] = useState("");
+  const [password, setPassword] = useState("");
+  const [database, setDatabase] = useState("");
+  const [sslMode, setSslMode] = useState("require");
+
+  const style = {
+    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 6, color: "#e8e8e8", fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
+    padding: "6px 8px", outline: "none",
+  } as const;
+
+  return (
+    <div style={{ padding: 10, background: "rgba(255,255,255,0.03)", borderRadius: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        {(["postgres", "mysql"] as DbProvider[]).map((p) => (
+          <div
+            key={p}
+            onClick={() => { setProvider(p); setPort(p === "postgres" ? "5432" : "3306"); }}
+            style={{
+              padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11,
+              background: provider === p ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${provider === p ? "var(--accent)" : "rgba(255,255,255,0.1)"}`,
+              color: provider === p ? "var(--accent)" : "rgba(255,255,255,0.5)",
+            }}
+          >
+            {p}
+          </div>
+        ))}
+      </div>
+
+      <input placeholder="Connection name" value={name} onChange={(e) => setName(e.target.value)} style={{ ...style, width: "100%", marginBottom: 6 }} />
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <input placeholder="Host" value={host} onChange={(e) => setHost(e.target.value)} style={{ ...style, flex: 2 }} />
+        <input placeholder="Port" value={port} onChange={(e) => setPort(e.target.value)} style={{ ...style, flex: 1 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <input placeholder="User" value={user} onChange={(e) => setUser(e.target.value)} style={{ ...style, flex: 1 }} />
+        <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ ...style, flex: 1 }} />
+      </div>
+      <input placeholder="Database name" value={database} onChange={(e) => setDatabase(e.target.value)} style={{ ...style, width: "100%", marginBottom: 6 }} />
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {["require", "disable"].map((mode) => (
+          <span
+            key={mode}
+            onClick={() => setSslMode(mode)}
+            style={{
+              fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer",
+              background: sslMode === mode ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.03)",
+              border: `1px solid ${sslMode === mode ? "var(--accent)" : "rgba(255,255,255,0.1)"}`,
+              color: sslMode === mode ? "var(--accent)" : "rgba(255,255,255,0.5)",
+            }}
+          >
+            {mode === "require" ? "SSL required" : "No SSL"}
+          </span>
+        ))}
+      </div>
+
+      {testError && <div style={{ fontSize: 11, color: "#f87171", marginBottom: 6 }}>{testError}</div>}
+
+      <div style={{ display: "flex", gap: 6 }}>
+        <FlyoutButton
+          onClick={() => onSave({ name: name || host, provider, host, port, user, password, database, sslMode })}
+           disabled={testing || !host || !database}
+        >
+          {testing ? "testing..." : "test & save"}
+        </FlyoutButton>
+        <FlyoutButton onClick={onCancel}>cancel</FlyoutButton>
+      </div>
+    </div>
+  );
+}
+
 export function DatabasePanel({ sqliteRoots = [] }: { sqliteRoots?: string[] }) {
   const { servers, scanning, rescan } = useDiscoveredServers(sqliteRoots);
   const { tables, loading, error, loadTables, setTables } = useDbBrowser();
   const { result, running, error: queryError, runQuery } = useQueryRunner();
+
+  const { connections: remoteConnections, addConnection, deleteConnection } = useSavedConnections();
+  const [showRemoteForm, setShowRemoteForm] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
 
   const [activeConn, setActiveConn] = useState<DbConnection | null>(null);
   const [activeDb, setActiveDb] = useState<string | null>(null);
   const [sql, setSql] = useState("");
 
   const asConnection = (s: DiscoveredServer, database: string): DbConnection => ({
-    id: `${s.provider}:${s.host}:${s.port}:${database}`,
-    name: database, provider: s.provider, host: s.host, port: s.port,
-    user: s.user, password: s.password, database,
-  });
+      id: `${s.provider}:${s.host}:${s.port}:${database}`,
+      name: database, provider: s.provider, host: s.host, port: s.port,
+      user: s.user, password: s.password, database,
+      sslMode: "",   // ⬅️ ADD — discovered servers (local socket/TCP) never need SSL
+    });
 
   const openDatabase = (s: DiscoveredServer, database: string) => {
     const conn = asConnection(s, database);
@@ -39,6 +130,21 @@ export function DatabasePanel({ sqliteRoots = [] }: { sqliteRoots?: string[] }) 
     const query = `SELECT * FROM ${table} LIMIT 100`;
     setSql(query);
     runQuery(activeConn, activeDb, query);
+  };
+
+  const handleSaveRemote = async (conn: Omit<SavedConnection, "id">) => {
+    setTesting(true);
+    setTestError(null);
+    try {
+      // await invoke("test_db_connection", conn);
+      await invoke("test_db_connection", { ...conn, sslmode: conn.sslMode ?? "" });
+      addConnection(conn);
+      setShowRemoteForm(false);
+    } catch (e) {
+      setTestError(e as string);
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -102,6 +208,55 @@ export function DatabasePanel({ sqliteRoots = [] }: { sqliteRoots?: string[] }) 
               </div>
             );
           })}
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>Remote</span>
+              <FlyoutButton onClick={() => setShowRemoteForm(!showRemoteForm)}>
+                {showRemoteForm ? "cancel" : "+ remote"}
+              </FlyoutButton>
+            </div>
+
+            {showRemoteForm && (
+              <RemoteConnectionForm onSave={handleSaveRemote} onCancel={() => setShowRemoteForm(false)} testing={testing} testError={testError} />
+            )}
+
+            {remoteConnections.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => {
+                  // const conn: DbConnection = {
+                  //   id: c.id, name: c.database, provider: c.provider, host: c.host, port: c.port,
+                  //   user: c.user, password: c.password, database: c.database, sslMode: c.sslMode ?? "require",
+                  // };
+                  const conn: DbConnection = {
+                     id: c.id, name: c.database, provider: c.provider, host: c.host, port: c.port,
+                     user: c.user, password: c.password, database: c.database, sslMode: c.sslMode,
+                   };
+                  setActiveConn(conn);
+                  setActiveDb(c.database);
+                  setSql("");
+                  loadTables(conn, c.database);
+                }}
+                // onClick={() => openDatabase(
+                //   { provider: c.provider, host: c.host, port: c.port, user: c.user, password: c.password, connected: true, databases: [c.database], error: null },
+                //   c.database
+                // )}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 10px", borderRadius: 6, cursor: "pointer", marginBottom: 4,
+                  background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, color: "#e8e8e8" }}>{c.name}</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>{c.host}:{c.port} / {c.database}</div>
+                </div>
+                <span onClick={(e) => { e.stopPropagation(); deleteConnection(c.id); }} style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+                  delete
+                </span>
+              </div>
+            ))}
+          </div>
         </>
       )}
 

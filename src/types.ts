@@ -61,7 +61,8 @@ export type DbConnection = {
   port: string;
   user: string;
   password: string;
-  database: string; // for sqlite, this is the file path
+  database: string;
+  sslMode?: string
 };
 
 export type QueryResult = { columns: string[]; rows: string[][]; row_count: number; duration_ms: number };
@@ -75,4 +76,16 @@ export type DiscoveredServer = {
   connected: boolean;
   databases: string[];
   error?: string | null;
+};
+
+export type SavedConnection = {
+  id: string;
+  name: string;
+  provider: DbProvider;
+  host: string;
+  port: string;
+  user: string;
+  password: string;
+  database: string;
+  sslMode?: string
 };
