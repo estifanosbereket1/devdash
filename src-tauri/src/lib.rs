@@ -1154,11 +1154,42 @@ async fn connect_pg_socket(
         .await
 }
 
+fn parse_ssl_mode(sslmode: &str) -> sqlx::postgres::PgSslMode {
+    match sslmode {
+        "require" => sqlx::postgres::PgSslMode::Require,
+        "disable" => sqlx::postgres::PgSslMode::Disable,
+        "prefer" => sqlx::postgres::PgSslMode::Prefer,
+        _ => sqlx::postgres::PgSslMode::Prefer, // sensible default when unspecified
+    }
+}
+
+async fn connect_pg_tcp(
+    host: &str,
+    port: &str,
+    user: &str,
+    password: &str,
+    database: &str,
+    sslmode: &str,
+) -> Result<sqlx::PgPool, sqlx::Error> {
+    let opts = sqlx::postgres::PgConnectOptions::new()
+        .host(host)
+        .port(port.parse().unwrap_or(5432))
+        .username(user)
+        .password(password)
+        .database(database)
+        .ssl_mode(parse_ssl_mode(sslmode));
+    sqlx::postgres::PgPoolOptions::new()
+        .connect_with(opts)
+        .await
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn cell_to_string_pg(row: &sqlx::postgres::PgRow, i: usize) -> String {
     use sqlx::ValueRef;
 
-    // Check genuine NULL before attempting any decode — this is what was
-    // missing before, and is why real nulls and undecodable types looked identical.
     if row.try_get_raw(i).map(|v| v.is_null()).unwrap_or(false) {
         return String::new();
     }
@@ -1168,52 +1199,174 @@ fn cell_to_string_pg(row: &sqlx::postgres::PgRow, i: usize) -> String {
         "UUID" => row
             .try_get::<uuid::Uuid, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<uuid decode error>")),
+            .unwrap_or_else(|_| "<uuid decode error>".to_string()),
         "TIMESTAMPTZ" => row
             .try_get::<chrono::DateTime<chrono::Utc>, _>(i)
             .map(|v| v.to_rfc3339())
-            .unwrap_or_else(|_| format!("<timestamptz decode error>")),
+            .unwrap_or_else(|_| "<timestamptz decode error>".to_string()),
         "TIMESTAMP" => row
             .try_get::<chrono::NaiveDateTime, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<timestamp decode error>")),
+            .unwrap_or_else(|_| "<timestamp decode error>".to_string()),
         "DATE" => row
             .try_get::<chrono::NaiveDate, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<date decode error>")),
+            .unwrap_or_else(|_| "<date decode error>".to_string()),
         "TIME" => row
             .try_get::<chrono::NaiveTime, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<time decode error>")),
+            .unwrap_or_else(|_| "<time decode error>".to_string()),
         "NUMERIC" => row
             .try_get::<bigdecimal::BigDecimal, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<numeric decode error>")),
+            .unwrap_or_else(|_| "<numeric decode error>".to_string()),
         "JSON" | "JSONB" => row
             .try_get::<serde_json::Value, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<json decode error>")),
+            .unwrap_or_else(|_| "<json decode error>".to_string()),
         "BOOL" => row
             .try_get::<bool, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<bool decode error>")),
+            .unwrap_or_else(|_| "<bool decode error>".to_string()),
         "INT2" | "INT4" => row
             .try_get::<i32, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<int decode error>")),
+            .unwrap_or_else(|_| "<int decode error>".to_string()),
         "INT8" => row
             .try_get::<i64, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<int decode error>")),
+            .unwrap_or_else(|_| "<int decode error>".to_string()),
         "FLOAT4" | "FLOAT8" => row
             .try_get::<f64, _>(i)
             .map(|v| v.to_string())
-            .unwrap_or_else(|_| format!("<float decode error>")),
+            .unwrap_or_else(|_| "<float decode error>".to_string()),
+        "BYTEA" => row
+            .try_get::<Vec<u8>, _>(i)
+            .map(|v| format!("\\x{}", hex_encode(&v)))
+            .unwrap_or_else(|_| "<bytea decode error>".to_string()),
+
+        // ⬇️ ARRAYS — Postgres names these "TYPE[]" for the text form ⬇️
+        "TEXT[]" | "VARCHAR[]" | "_TEXT" | "_VARCHAR" => row
+            .try_get::<Vec<String>, _>(i)
+            .map(|v| format!("{{{}}}", v.join(",")))
+            .unwrap_or_else(|_| "<text[] decode error>".to_string()),
+        "INT4[]" | "_INT4" => row
+            .try_get::<Vec<i32>, _>(i)
+            .map(|v| {
+                format!(
+                    "{{{}}}",
+                    v.iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            })
+            .unwrap_or_else(|_| "<int4[] decode error>".to_string()),
+        "INT8[]" | "_INT8" => row
+            .try_get::<Vec<i64>, _>(i)
+            .map(|v| {
+                format!(
+                    "{{{}}}",
+                    v.iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            })
+            .unwrap_or_else(|_| "<int8[] decode error>".to_string()),
+        "UUID[]" | "_UUID" => row
+            .try_get::<Vec<uuid::Uuid>, _>(i)
+            .map(|v| {
+                format!(
+                    "{{{}}}",
+                    v.iter()
+                        .map(|u| u.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            })
+            .unwrap_or_else(|_| "<uuid[] decode error>".to_string()),
+        "BOOL[]" | "_BOOL" => row
+            .try_get::<Vec<bool>, _>(i)
+            .map(|v| {
+                format!(
+                    "{{{}}}",
+                    v.iter()
+                        .map(|b| b.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            })
+            .unwrap_or_else(|_| "<bool[] decode error>".to_string()),
+        // ⬆️ END ARRAYS ⬆️
+
+        // Custom enum types (like your StaffRole) decode fine as plain text
         _ => row
             .try_get::<String, _>(i)
             .unwrap_or_else(|_| format!("<unsupported type: {type_name}>")),
     }
 }
+
+// fn cell_to_string_pg(row: &sqlx::postgres::PgRow, i: usize) -> String {
+//     use sqlx::ValueRef;
+
+//     // Check genuine NULL before attempting any decode — this is what was
+//     // missing before, and is why real nulls and undecodable types looked identical.
+//     if row.try_get_raw(i).map(|v| v.is_null()).unwrap_or(false) {
+//         return String::new();
+//     }
+
+//     let type_name = row.column(i).type_info().name();
+//     match type_name {
+//         "UUID" => row
+//             .try_get::<uuid::Uuid, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<uuid decode error>")),
+//         "TIMESTAMPTZ" => row
+//             .try_get::<chrono::DateTime<chrono::Utc>, _>(i)
+//             .map(|v| v.to_rfc3339())
+//             .unwrap_or_else(|_| format!("<timestamptz decode error>")),
+//         "TIMESTAMP" => row
+//             .try_get::<chrono::NaiveDateTime, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<timestamp decode error>")),
+//         "DATE" => row
+//             .try_get::<chrono::NaiveDate, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<date decode error>")),
+//         "TIME" => row
+//             .try_get::<chrono::NaiveTime, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<time decode error>")),
+//         "NUMERIC" => row
+//             .try_get::<bigdecimal::BigDecimal, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<numeric decode error>")),
+//         "JSON" | "JSONB" => row
+//             .try_get::<serde_json::Value, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<json decode error>")),
+//         "BOOL" => row
+//             .try_get::<bool, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<bool decode error>")),
+//         "INT2" | "INT4" => row
+//             .try_get::<i32, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<int decode error>")),
+//         "INT8" => row
+//             .try_get::<i64, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<int decode error>")),
+//         "FLOAT4" | "FLOAT8" => row
+//             .try_get::<f64, _>(i)
+//             .map(|v| v.to_string())
+//             .unwrap_or_else(|_| format!("<float decode error>")),
+//         _ => row
+//             .try_get::<String, _>(i)
+//             .unwrap_or_else(|_| format!("<unsupported type: {type_name}>")),
+//     }
+// }
 
 #[tauri::command]
 async fn test_db_connection(
@@ -1427,14 +1580,43 @@ async fn run_query(
             duration_ms,
         });
     }
+
+    if provider == "postgres" {
+        let pool = connect_pg_tcp(&host, &port, &user, &password, &database, &sslmode)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let start = std::time::Instant::now();
+        let rows = sqlx::query(&sql)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        let duration_ms = start.elapsed().as_millis() as u64;
+        pool.close().await;
+
+        let columns = rows
+            .first()
+            .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
+            .unwrap_or_default();
+        let result_rows: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| {
+                (0..row.columns().len())
+                    .map(|i| cell_to_string_pg(row, i))
+                    .collect()
+            })
+            .collect();
+        let row_count = result_rows.len();
+
+        return Ok(QueryResult {
+            columns,
+            rows: result_rows,
+            row_count,
+            duration_ms,
+        });
+    }
     let url = build_connection_url(
-        "postgres",
-        "localhost",
-        &port.to_string(),
-        &user,
-        &password,
-        "postgres",
-        "", // ⬅️ ADD THIS — local discovery, no SSL needed
+        &provider, &host, &port, &user, &password, &database, &sslmode,
     );
     let pool = AnyPoolOptions::new()
         .connect(&url)
