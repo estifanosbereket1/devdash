@@ -38,7 +38,10 @@ import { RestClientPanel } from "./panels/RestClientPanel";
 import { Database } from "lucide-react";
 import { DatabasePanel } from "./panels/DatabasePanel";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database"];
+import { BookOpen } from "lucide-react";
+import { JournalPanel } from "./panels/JournalPanel";
+
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database",  "journal"];
 
 function App() {
   const mem = useMemoryInfo();
@@ -136,6 +139,7 @@ function App() {
             <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
             <Radio size={16} style={iconStyle("rest")} onClick={() => toggleDetail("rest")} />
             <Database size={16} style={iconStyle("database")} onClick={() => toggleDetail("database")} />
+            <BookOpen size={16} style={iconStyle("journal")} onClick={() => toggleDetail("journal")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -157,6 +161,7 @@ function App() {
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
           {activeDetail === "rest" && <RestClientPanel />}
           {activeDetail === "database" && <DatabasePanel />}
+          {activeDetail === "journal" && <JournalPanel />}
         </div>
       )}
     </div>

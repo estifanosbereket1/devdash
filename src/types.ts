@@ -89,3 +89,11 @@ export type SavedConnection = {
   database: string;
   sslMode?: string
 };
+
+export type JournalEntry = {
+  id: string;
+  title: string;
+  date: string;
+  content: string;
+  updatedAt: number;
+};
