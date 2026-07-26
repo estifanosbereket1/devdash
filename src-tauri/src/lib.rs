@@ -1245,7 +1245,11 @@ fn cell_to_string_pg(row: &sqlx::postgres::PgRow, i: usize) -> String {
             .map(|v| format!("\\x{}", hex_encode(&v)))
             .unwrap_or_else(|_| "<bytea decode error>".to_string()),
 
-        // ⬇️ ARRAYS — Postgres names these "TYPE[]" for the text form ⬇️
+        "MONEY" => row
+            .try_get::<sqlx::postgres::types::PgMoney, _>(i)
+            .map(|v| format!("{:.2}", v.0 as f64 / 100.0))
+            .unwrap_or_else(|_| "<money decode error>".to_string()),
+
         "TEXT[]" | "VARCHAR[]" | "_TEXT" | "_VARCHAR" => row
             .try_get::<Vec<String>, _>(i)
             .map(|v| format!("{{{}}}", v.join(",")))
@@ -1298,11 +1302,10 @@ fn cell_to_string_pg(row: &sqlx::postgres::PgRow, i: usize) -> String {
                 )
             })
             .unwrap_or_else(|_| "<bool[] decode error>".to_string()),
-        // ⬆️ END ARRAYS ⬆️
 
         // Custom enum types (like your StaffRole) decode fine as plain text
         _ => row
-            .try_get::<String, _>(i)
+            .try_get_unchecked::<String, _>(i)
             .unwrap_or_else(|_| format!("<unsupported type: {type_name}>")),
     }
 }
