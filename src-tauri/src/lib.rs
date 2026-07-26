@@ -355,9 +355,21 @@ async fn get_managed_units() -> Result<Vec<UnitInfo>, String> {
     let units: Vec<UnitTuple> = reply.body().deserialize().map_err(|e| e.to_string())?;
 
     // Step C: keep only units that are in our "enabled" set
+    // let result = units
+    //     .into_iter()
+    //     .filter(|u| enabled_names.contains(&u.0))
+    //     .map(|u| UnitInfo {
+    //         name: u.0,
+    //         description: u.1,
+    //         load_state: u.2,
+    //         active_state: u.3,
+    //         sub_state: u.4,
+    //     })
+    //     .collect();
+
     let result = units
         .into_iter()
-        .filter(|u| enabled_names.contains(&u.0))
+        .filter(|u| enabled_names.contains(&u.0) || u.3 == "active")
         .map(|u| UnitInfo {
             name: u.0,
             description: u.1,
@@ -1894,6 +1906,42 @@ async fn discover_databases(sqlite_roots: Vec<String>) -> Vec<DiscoveredServer> 
     results
 }
 
+#[tauri::command]
+fn add_cron_job(schedule: String, command: String) -> Result<(), String> {
+    let output = std::process::Command::new("crontab")
+        .arg("-l")
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let existing = if output.status.success() {
+        String::from_utf8_lossy(&output.stdout).to_string()
+    } else {
+        String::new()
+    };
+
+    let new_content = format!(
+        "{}{}\n",
+        existing.trim_end(),
+        format!("\n{} {}", schedule, command)
+    );
+
+    let mut child = std::process::Command::new("crontab")
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    use std::io::Write;
+    child
+        .stdin
+        .as_mut()
+        .ok_or("failed to open stdin")?
+        .write_all(new_content.as_bytes())
+        .map_err(|e| e.to_string())?;
+    child.wait().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1942,7 +1990,8 @@ pub fn run() {
             list_databases,
             list_tables,
             run_query,
-            discover_databases
+            discover_databases,
+            add_cron_job
         ])
         .setup(|app| {
             // Build the right-click menu items

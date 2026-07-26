@@ -70,7 +70,7 @@ function App() {
   const openProject = (path: string) => invoke("open_in_editor", { path, editor: prefs[path] ?? defaultEditor });
 
   const { ports, kill: killPort, busy: portBusy, refresh: refreshPorts } = usePorts(skipConfirmations);
-  const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs(skipConfirmations);
+  const { jobs: cronJobs, remove: removeCron, addJob: addCronJob, busy: cronBusy } = useCronJobs(skipConfirmations);
   const { notes, updateNotes, saved: notesSaved } = useNotes();
   const { tasks, addTask, toggleTask, deleteTask } = useTasks();
 
@@ -171,7 +171,7 @@ function App() {
           {activeDetail === "notes" && <NotesPanel notes={notes} updateNotes={updateNotes} saved={notesSaved} />}
           {activeDetail === "secrets" && <SecretsPanel risks={envRisks} />}
           {activeDetail === "bloat" && <BloatPanel entries={bloatEntries} scan={scanBloat} scanning={bloatScanning} prune={pruneBloat} busy={bloatBusy} />}
-          {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} />}
+          {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} addJob={addCronJob} />}
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
           {activeDetail === "rest" && <RestClientPanel />}

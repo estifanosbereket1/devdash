@@ -22,6 +22,10 @@ export function useCronJobs(skipConfirmations: boolean) {
       setBusy(null);
     }
   };
+  const addJob = async (schedule: string, command: string) => {
+     await invoke("add_cron_job", { schedule, command });
+     refresh();
+   };
 
-  return { jobs, refresh, remove, busy };
+  return { jobs, refresh, addJob,remove, busy };
 }

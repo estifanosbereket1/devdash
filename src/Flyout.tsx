@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { FolderOpen, X } from "lucide-react";
 
 const EDITORS = [
@@ -117,5 +117,26 @@ export function FlyoutButton({ onClick, disabled, children }: { onClick: () => v
     >
       {children}
     </button>
+  );
+}
+
+export function CommandButton({ label, command, onClick, disabled }: {
+  label: string; command: string; onClick: () => void; disabled?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div style={{ position: "relative" }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <FlyoutButton onClick={onClick} disabled={disabled}>{label}</FlyoutButton>
+      {hover && (
+        <div style={{
+          position: "absolute", bottom: "130%", left: "50%", transform: "translateX(-50%)",
+          background: "#14161c", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6,
+          padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+          color: "var(--accent)", whiteSpace: "nowrap", zIndex: 20, pointerEvents: "none",
+        }}>
+          {command}
+        </div>
+      )}
+    </div>
   );
 }
