@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 
 import { DetailPanel, Dial } from "./Dial";
-import { Server, Container, FolderGit2, Plug, Settings as SettingsIcon, StickyNote, ShieldAlert, Trash2, Clock, Music } from "lucide-react";
+import { Settings as SettingsIcon } from "lucide-react";
 
 import { useMemoryInfo, useBatteryInfo, useDiskInfo, useTemperatures } from "./hooks/useSystemStats";
 import { useManagedUnits } from "./hooks/useSystemd";
@@ -16,6 +16,9 @@ import { useCronJobs } from "./hooks/useCron";
 import { useNotes } from "./hooks/useNotes";
 import { useMusicRoots, useMusicLibrary, usePlayer } from "./hooks/useMusic";
 import { useOpacitySetting, useAccentSetting, useDefaultEditor, useConfirmationsSetting } from "./hooks/useSettings";
+import { useTasks } from "./hooks/useTasks";
+import { useTabSettings } from "./hooks/useTabSettings";
+import { TAB_REGISTRY, type TabId } from "./tabRegistry";
 
 import { SystemdPanel } from "./panels/SystemdPanel";
 import { DockerPanel } from "./panels/DockerPanel";
@@ -27,21 +30,13 @@ import { SecretsPanel } from "./panels/SecretsPanel";
 import { BloatPanel } from "./panels/BloatPanel";
 import { CronPanel } from "./panels/CronPanel";
 import { MusicPanel } from "./panels/MusicPanel";
-
-import { CheckSquare } from "lucide-react";
-import { useTasks } from "./hooks/useTasks";
 import { TasksPanel } from "./panels/TasksPanel";
-
-import { Radio } from "lucide-react";
 import { RestClientPanel } from "./panels/RestClientPanel";
-
-import { Database } from "lucide-react";
 import { DatabasePanel } from "./panels/DatabasePanel";
-
-import { BookOpen } from "lucide-react";
 import { JournalPanel } from "./panels/JournalPanel";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database",  "journal"];
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database", "journal"];
+const FIXED_DETAIL_IDS = ["ram", "batt", "temp", "disk", "settings"]; // never hidden by tab config
 
 function App() {
   const mem = useMemoryInfo();
@@ -77,12 +72,13 @@ function App() {
   const { ports, kill: killPort, busy: portBusy, refresh: refreshPorts } = usePorts(skipConfirmations);
   const { jobs: cronJobs, remove: removeCron, busy: cronBusy } = useCronJobs(skipConfirmations);
   const { notes, updateNotes, saved: notesSaved } = useNotes();
-
   const { tasks, addTask, toggleTask, deleteTask } = useTasks();
 
   const { roots: musicRoots, addRoot: addMusicRoot, removeMusicRoot } = useMusicRoots();
   const { tracks, scan: scanLibrary, scanning: musicScanning } = useMusicLibrary(musicRoots);
   const player = usePlayer();
+
+  const { tabs, visibleTabs, toggleTab, moveTab, enabledCount } = useTabSettings();
 
   const [expanded, setExpanded] = useState(false);
   const [activeDetail, setActiveDetail] = useState<string | null>(null);
@@ -110,6 +106,13 @@ function App() {
     document.documentElement.style.setProperty("--dock-opacity", opacity.toString());
   }, [opacity]);
 
+  // if a panel gets disabled in settings while it's open, close it rather than leaving a dead view up
+  useEffect(() => {
+    if (activeDetail && !FIXED_DETAIL_IDS.includes(activeDetail) && !visibleTabs.includes(activeDetail as TabId)) {
+      setActiveDetail(null);
+    }
+  }, [visibleTabs]);
+
   const iconStyle = (id: string) => ({ cursor: "pointer" as const, opacity: activeDetail === id ? 1 : 0.5, color: activeDetail === id ? "#5eead4" : "#e8e8e8" });
 
   return (
@@ -126,20 +129,24 @@ function App() {
             {battery && <Dial id="batt" ratio={battery.percentage / 100} value={`${battery.percentage.toFixed(0)}%`} label="BATT" active={activeDetail === "batt"} onToggle={toggleDetail} />}
             {temps.length > 0 && <Dial id="temp" ratio={Math.min(temps[0].celsius / 100, 1)} value={`${temps[0].celsius.toFixed(0)}°`} label="TEMP" active={activeDetail === "temp"} onToggle={toggleDetail} />}
             {disks.length > 0 && <Dial id="disk" ratio={disks[0].used_ratio} value={`${disks[0].free_gb.toFixed(0)}G`} label="DISK" active={activeDetail === "disk"} onToggle={toggleDetail} />}
-            <Server size={16} style={iconStyle("systemd")} onClick={() => toggleDetail("systemd")} />
-            <Container size={16} style={iconStyle("docker")} onClick={() => toggleDetail("docker")} />
-            <FolderGit2 size={16} style={iconStyle("projects")} onClick={() => toggleDetail("projects")} />
-            <Plug size={16} style={iconStyle("ports")} onClick={() => toggleDetail("ports")} />
+
+            {visibleTabs.map((id) => {
+              const config = TAB_REGISTRY[id];
+              const Icon = config.icon;
+              const isSecrets = id === "secrets";
+              return (
+                <Icon
+                  key={id}
+                  size={16}
+                  style={isSecrets
+                    ? { ...iconStyle(id), color: activeDetail === id ? "#5eead4" : exposedCount > 0 ? "#f87171" : "#e8e8e8" }
+                    : iconStyle(id)}
+                  onClick={() => toggleDetail(id)}
+                />
+              );
+            })}
+
             <SettingsIcon size={16} style={iconStyle("settings")} onClick={() => toggleDetail("settings")} />
-            <StickyNote size={16} style={iconStyle("notes")} onClick={() => toggleDetail("notes")} />
-            <ShieldAlert size={16} style={{ ...iconStyle("secrets"), color: activeDetail === "secrets" ? "#5eead4" : exposedCount > 0 ? "#f87171" : "#e8e8e8" }} onClick={() => toggleDetail("secrets")} />
-            <Trash2 size={16} style={iconStyle("bloat")} onClick={() => toggleDetail("bloat")} />
-            <Clock size={16} style={iconStyle("cron")} onClick={() => toggleDetail("cron")} />
-            <Music size={16} style={iconStyle("music")} onClick={() => toggleDetail("music")} />
-            <CheckSquare size={16} style={iconStyle("tasks")} onClick={() => toggleDetail("tasks")} />
-            <Radio size={16} style={iconStyle("rest")} onClick={() => toggleDetail("rest")} />
-            <Database size={16} style={iconStyle("database")} onClick={() => toggleDetail("database")} />
-            <BookOpen size={16} style={iconStyle("journal")} onClick={() => toggleDetail("journal")} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -152,7 +159,15 @@ function App() {
           {activeDetail === "docker" && <DockerPanel containers={containers} images={images} volumes={volumes} actBusy={containerBusy} actContainer={actContainer} imageBusy={imageBusy} removeImage={removeImage} volumeBusy={volumeBusy} removeVolume={removeVolume} />}
           {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} />}
           {activeDetail === "ports" && <PortsPanel ports={ports} busy={portBusy} kill={killPort} refresh={refreshPorts} />}
-          {activeDetail === "settings" && <SettingsPanel opacity={opacity} setOpacity={setOpacity} accent={accent} setAccent={setAccent} defaultEditor={defaultEditor} setDefaultEditor={setDefaultEditor} skipConfirmations={skipConfirmations} setSkipConfirmations={setSkipConfirmations} />}
+          {activeDetail === "settings" && (
+            <SettingsPanel
+              opacity={opacity} setOpacity={setOpacity}
+              accent={accent} setAccent={setAccent}
+              defaultEditor={defaultEditor} setDefaultEditor={setDefaultEditor}
+              skipConfirmations={skipConfirmations} setSkipConfirmations={setSkipConfirmations}
+              tabs={tabs} toggleTab={toggleTab} moveTab={moveTab} enabledCount={enabledCount}
+            />
+          )}
           {activeDetail === "notes" && <NotesPanel notes={notes} updateNotes={updateNotes} saved={notesSaved} />}
           {activeDetail === "secrets" && <SecretsPanel risks={envRisks} />}
           {activeDetail === "bloat" && <BloatPanel entries={bloatEntries} scan={scanBloat} scanning={bloatScanning} prune={pruneBloat} busy={bloatBusy} />}

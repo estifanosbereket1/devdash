@@ -1,5 +1,9 @@
 import { Flyout, EditorPicker } from "../Flyout";
 import { ACCENT_PRESETS } from "../hooks/useSettings";
+import { TAB_REGISTRY, MIN_ENABLED_TABS, type TabId } from "../tabRegistry";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+type TabConfig = { id: TabId; enabled: boolean };
 
 type Props = {
   opacity: number;
@@ -10,9 +14,16 @@ type Props = {
   setDefaultEditor: (v: string) => void;
   skipConfirmations: boolean;
   setSkipConfirmations: (v: boolean) => void;
+  tabs: TabConfig[];
+  toggleTab: (id: TabId) => void;
+  moveTab: (id: TabId, direction: -1 | 1) => void;
+  enabledCount: number;
 };
 
-export function SettingsPanel({ opacity, setOpacity, accent, setAccent, defaultEditor, setDefaultEditor, skipConfirmations, setSkipConfirmations }: Props) {
+export function SettingsPanel({
+  opacity, setOpacity, accent, setAccent, defaultEditor, setDefaultEditor,
+  skipConfirmations, setSkipConfirmations, tabs, toggleTab, moveTab, enabledCount,
+}: Props) {
   return (
     <Flyout>
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 6 }}>Dock Opacity</div>
@@ -41,6 +52,39 @@ export function SettingsPanel({ opacity, setOpacity, accent, setAccent, defaultE
           <div style={{ width: 14, height: 14, borderRadius: "50%", background: "white", position: "absolute", top: 2, left: skipConfirmations ? 18 : 2, transition: "left 0.15s ease" }} />
         </div>
       </div>
+
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", margin: "14px 0 6px" }}>
+        Tabs ({enabledCount} enabled, min {MIN_ENABLED_TABS})
+      </div>
+      {tabs.map((tab, i) => {
+        const config = TAB_REGISTRY[tab.id];
+        const Icon = config.icon;
+        const atMin = tab.enabled && enabledCount <= MIN_ENABLED_TABS;
+        return (
+          <div key={tab.id} style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
+            opacity: tab.enabled ? 1 : 0.4,
+          }}>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <ChevronUp size={11} onClick={() => moveTab(tab.id, -1)} style={{ cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.2 : 0.6 }} />
+              <ChevronDown size={11} onClick={() => moveTab(tab.id, 1)} style={{ cursor: i === tabs.length - 1 ? "default" : "pointer", opacity: i === tabs.length - 1 ? 0.2 : 0.6 }} />
+            </div>
+            <Icon size={14} color={tab.enabled ? "#e8e8e8" : "rgba(255,255,255,0.4)"} />
+            <span style={{ fontSize: 12, flex: 1 }}>{config.label}</span>
+            <div
+              onClick={() => toggleTab(tab.id)}
+              title={atMin ? `At least ${MIN_ENABLED_TABS} tabs must stay enabled` : undefined}
+              style={{
+                width: 34, height: 18, borderRadius: 9, cursor: atMin ? "not-allowed" : "pointer",
+                background: tab.enabled ? "var(--accent)" : "rgba(255,255,255,0.15)",
+                position: "relative", transition: "background 0.15s ease",
+              }}
+            >
+              <div style={{ width: 14, height: 14, borderRadius: "50%", background: "white", position: "absolute", top: 2, left: tab.enabled ? 18 : 2, transition: "left 0.15s ease" }} />
+            </div>
+          </div>
+        );
+      })}
     </Flyout>
   );
 }

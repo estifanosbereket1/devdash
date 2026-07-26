@@ -1,5 +1,7 @@
 import { Flyout, FlyoutRow } from "../Flyout";
 import type { EnvRisk } from "../types";
+import { ChevronUp, ChevronDown } from "lucide-react";
+
 
 export function SecretsPanel({ risks }: { risks: EnvRisk[] }) {
   return (
@@ -14,6 +16,7 @@ export function SecretsPanel({ risks }: { risks: EnvRisk[] }) {
           statusColor={r.gitignored ? "#5eead4" : "#f87171"}
         />
       ))}
+
     </Flyout>
   );
 }
