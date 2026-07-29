@@ -1,7 +1,11 @@
-import { Flyout, EditorPicker } from "../Flyout";
+import { useState } from "react";
+import { Flyout, EditorPicker, FlyoutButton } from "../Flyout";
 import { ACCENT_PRESETS } from "../hooks/useSettings";
 import { TAB_REGISTRY, MIN_ENABLED_TABS, type TabId } from "../tabRegistry";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { save, open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
+import { confirmUnless } from "../utils";
 
 type TabConfig = { id: TabId; enabled: boolean };
 
@@ -24,7 +28,34 @@ export function SettingsPanel({
   opacity, setOpacity, accent, setAccent, defaultEditor, setDefaultEditor,
   skipConfirmations, setSkipConfirmations, tabs, toggleTab, moveTab, enabledCount,
 }: Props) {
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const handleExport = async () => {
+    const defaultPath = `devdash-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const target = await save({ defaultPath, filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (!target) return;
+    try {
+      const count = await invoke<number>("export_backup", { targetPath: target });
+      setBackupStatus(`Exported ${count} file(s) to ${target}`);
+    } catch (e) {
+      setBackupStatus(`Export failed: ${e}`);
+    }
+  };
+
+  const handleImport = async () => {
+    const confirmed = await confirmUnless(false, "Import will overwrite your current notes, tasks, journal, connections, and settings with the backup's contents. Continue?", { title: "Import backup", kind: "warning" });
+    if (!confirmed) return;
+
+    const source = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (!source) return;
+    try {
+      const restored = await invoke<string[]>("import_backup", { sourcePath: source as string });
+      setBackupStatus(`Restored ${restored.length} file(s). Restart DevDash to see changes.`);
+    } catch (e) {
+      setBackupStatus(`Import failed: ${e}`);
+    }
+  };
   return (
+
     <Flyout>
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 6 }}>Dock Opacity</div>
       <input type="range" min="0.15" max="0.9" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} style={{ width: "100%", accentColor: "var(--accent)" }} />
@@ -85,6 +116,19 @@ export function SettingsPanel({
           </div>
         );
       })}
+
+      <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 6 }}>
+          Backup
+        </div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+          <FlyoutButton onClick={handleExport}>export all data</FlyoutButton>
+          <FlyoutButton onClick={handleImport}>import backup</FlyoutButton>
+        </div>
+        {backupStatus && (
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{backupStatus}</div>
+        )}
+      </div>
     </Flyout>
   );
 }
