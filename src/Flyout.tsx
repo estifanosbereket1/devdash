@@ -1,6 +1,13 @@
 import { ReactNode, useState } from "react";
-import { FolderOpen, X } from "lucide-react";
+import type { ComponentType } from "react";
+import { FolderOpen, X, Code2 } from "lucide-react";
+import {
+  SiZedindustries, SiSublimetext, SiAndroidstudio, SiPycharm, SiPhpstorm,
+  SiIntellijidea, SiWebstorm, SiGoland, SiRider, SiClion, SiEclipseide,
+} from "@icons-pack/react-simple-icons";
 import type { EditorInfo } from "./types";
+
+type IconComponent = ComponentType<{ size?: number | string; color?: string }>;
 
 // Fallback shown before the machine scan resolves or if nothing was detected at all,
 // so the picker never renders empty.
@@ -9,12 +16,23 @@ const FALLBACK_EDITORS: EditorInfo[] = [
   { id: "zed", label: "Zed", command: "zed", color: "#ff9f5b", kinds: [] },
 ];
 
-// Short glyph shown in the compact picker button, derived from the label.
-function abbreviate(label: string): string {
-  const words = label.split(/\s+/);
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return label.slice(0, 2).toUpperCase();
-}
+// Real brand marks where available (simple-icons). VS Code has no icon there
+// (trademark removed from the dataset) and RustRover isn't published yet —
+// both fall back to a generic editor glyph via EDITOR_ICON_FALLBACK below.
+const EDITOR_ICONS: Record<string, IconComponent> = {
+  zed: SiZedindustries,
+  sublime: SiSublimetext,
+  androidstudio: SiAndroidstudio,
+  pycharm: SiPycharm,
+  phpstorm: SiPhpstorm,
+  intellij: SiIntellijidea,
+  webstorm: SiWebstorm,
+  goland: SiGoland,
+  rider: SiRider,
+  clion: SiClion,
+  eclipse: SiEclipseide,
+};
+const EDITOR_ICON_FALLBACK: IconComponent = Code2;
 
 export function EditorPicker({ value, onChange, editors }: { value: string; onChange: (id: string) => void; editors?: EditorInfo[] }) {
   const list = editors && editors.length > 0 ? editors : FALLBACK_EDITORS;
@@ -22,6 +40,7 @@ export function EditorPicker({ value, onChange, editors }: { value: string; onCh
     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
       {list.map((editor) => {
         const active = value === editor.id || value === editor.command;
+        const Icon = EDITOR_ICONS[editor.id] ?? EDITOR_ICON_FALLBACK;
         return (
           <div
             key={editor.id}
@@ -34,17 +53,13 @@ export function EditorPicker({ value, onChange, editors }: { value: string; onCh
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 10,
-              fontFamily: "'JetBrains Mono', monospace",
-              fontWeight: 500,
               cursor: "pointer",
               background: active ? `${editor.color}26` : "rgba(255,255,255,0.05)",
               border: active ? `1px solid ${editor.color}` : "1px solid rgba(255,255,255,0.1)",
-              color: active ? editor.color : "rgba(255,255,255,0.4)",
               transition: "all 0.15s ease",
             }}
           >
-            {abbreviate(editor.label)}
+            <Icon size={13} color={active ? editor.color : "rgba(255,255,255,0.4)"} />
           </div>
         );
       })}
