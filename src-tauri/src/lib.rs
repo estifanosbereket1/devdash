@@ -575,6 +575,8 @@ fn detect_kind(dir: &Path) -> Option<String> {
         || dir.join("setup.py").exists()
     {
         Some("Python".to_string())
+    } else if dir.join("composer.json").exists() {
+        Some("PHP".to_string())
     } else if dir.join("package.json").exists() {
         if dir.join("tsconfig.json").exists() {
             Some("TypeScript".to_string())
@@ -587,6 +589,11 @@ fn detect_kind(dir: &Path) -> Option<String> {
         Some("Rust".to_string())
     } else if has_dotnet_project(dir) {
         Some("C#".to_string())
+    } else if dir.join("pom.xml").exists()
+        || dir.join("build.gradle").exists()
+        || dir.join("build.gradle.kts").exists()
+    {
+        Some("Java".to_string())
     } else {
         None
     }
@@ -666,13 +673,105 @@ fn open_in_editor(path: String, editor: String) -> Result<(), String> {
     let binary = match editor.as_str() {
         "vscode" => "code",
         "zed" => "zed",
-        other => other, // allow passing a raw binary name directly too
+        other => other, // allow passing a raw binary name/path directly too
     };
     std::process::Command::new(binary)
         .arg(&path)
         .spawn()
         .map_err(|e| format!("Failed to launch {binary}: {e}"))?;
     Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
+struct EditorInfo {
+    id: String,
+    label: String,
+    command: String,
+    color: String,
+    // project `kind`s this editor is a good match for; empty = suits any project
+    kinds: Vec<String>,
+}
+
+struct EditorDef {
+    id: &'static str,
+    label: &'static str,
+    color: &'static str,
+    kinds: &'static [&'static str],
+    binaries: &'static [&'static str],
+}
+
+// General-purpose editors have empty `kinds` (shown for every project);
+// IDEs are scoped to the project kind(s) they're built for.
+const EDITOR_DEFS: &[EditorDef] = &[
+    EditorDef { id: "vscode", label: "VS Code", color: "#519aba", kinds: &[], binaries: &["code", "code-insiders", "codium", "vscodium"] },
+    EditorDef { id: "zed", label: "Zed", color: "#ff9f5b", kinds: &[], binaries: &["zed"] },
+    EditorDef { id: "sublime", label: "Sublime Text", color: "#ff9800", kinds: &[], binaries: &["subl"] },
+    EditorDef { id: "androidstudio", label: "Android Studio", color: "#3ddc84", kinds: &["Flutter", "Java"], binaries: &["studio.sh", "studio", "android-studio"] },
+    EditorDef { id: "pycharm", label: "PyCharm", color: "#21d789", kinds: &["Python"], binaries: &["pycharm", "pycharm.sh", "charm"] },
+    EditorDef { id: "phpstorm", label: "PhpStorm", color: "#b075f0", kinds: &["PHP"], binaries: &["phpstorm", "phpstorm.sh"] },
+    EditorDef { id: "intellij", label: "IntelliJ IDEA", color: "#fe315d", kinds: &["Java"], binaries: &["idea", "idea.sh", "idea-ce", "intellij-idea-community", "intellij-idea-ultimate"] },
+    EditorDef { id: "webstorm", label: "WebStorm", color: "#40b6e0", kinds: &["TypeScript", "JavaScript"], binaries: &["webstorm", "webstorm.sh"] },
+    EditorDef { id: "goland", label: "GoLand", color: "#4a7ef2", kinds: &["Go"], binaries: &["goland", "goland.sh"] },
+    EditorDef { id: "rustrover", label: "RustRover", color: "#f74c00", kinds: &["Rust"], binaries: &["rustrover", "rustrover.sh"] },
+    EditorDef { id: "rider", label: "Rider", color: "#c90f5e", kinds: &["C#"], binaries: &["rider", "rider.sh"] },
+    EditorDef { id: "clion", label: "CLion", color: "#22cae6", kinds: &[], binaries: &["clion", "clion.sh"] },
+    EditorDef { id: "eclipse", label: "Eclipse", color: "#2c58ba", kinds: &["Java"], binaries: &["eclipse"] },
+];
+
+// Looks for the first matching binary name on PATH (via `which`), falling back
+// to a handful of install locations JetBrains/Google installers commonly use
+// but don't always add to PATH (Toolbox scripts, snap, tarball installs under /opt).
+fn find_binary(names: &[&str]) -> Option<String> {
+    for name in names {
+        if let Ok(output) = std::process::Command::new("which").arg(name).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut search_dirs = vec![
+        "/snap/bin".to_string(),
+        format!("{home}/.local/share/JetBrains/Toolbox/scripts"),
+    ];
+    if let Ok(entries) = std::fs::read_dir("/opt") {
+        for entry in entries.flatten() {
+            let bin_dir = entry.path().join("bin");
+            if bin_dir.is_dir() {
+                search_dirs.push(bin_dir.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    for dir in &search_dirs {
+        for name in names {
+            let candidate = Path::new(dir).join(name);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn detect_editors() -> Vec<EditorInfo> {
+    EDITOR_DEFS
+        .iter()
+        .filter_map(|def| {
+            find_binary(def.binaries).map(|command| EditorInfo {
+                id: def.id.to_string(),
+                label: def.label.to_string(),
+                command,
+                color: def.color.to_string(),
+                kinds: def.kinds.iter().map(|k| k.to_string()).collect(),
+            })
+        })
+        .collect()
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -2045,6 +2144,7 @@ pub fn run() {
             remove_volume,
             scan_projects,
             open_in_editor,
+            detect_editors,
             list_ports,
             kill_port,
             scan_git_status,

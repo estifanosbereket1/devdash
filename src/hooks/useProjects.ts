@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
 import { confirmUnless } from "../utils";
-import type { ProjectInfo, GitStatus, EnvRisk, BloatEntry } from "../types";
+import type { ProjectInfo, GitStatus, EnvRisk, BloatEntry, EditorInfo } from "../types";
 
 export function useProjectRoots() {
   const [roots, setRoots] = useState<string[]>([]);
@@ -56,6 +56,16 @@ export function useEditorPreferences() {
   };
 
   return { prefs, setEditorFor };
+}
+
+export function useInstalledEditors() {
+  const [editors, setEditors] = useState<EditorInfo[]>([]);
+
+  useEffect(() => {
+    invoke<EditorInfo[]>("detect_editors").then(setEditors);
+  }, []);
+
+  return editors;
 }
 
 export function useProjects(roots: string[]) {

@@ -1,4 +1,5 @@
 export type ProjectInfo = { name: string; path: string; kind: string };
+export type EditorInfo = { id: string; label: string; command: string; color: string; kinds: string[] };
 export type MemoryInfo = { used_gb: number; total_gb: number; ratio: number };
 export type BatteryInfo = {
   percentage: number;

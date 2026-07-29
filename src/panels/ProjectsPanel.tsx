@@ -1,7 +1,7 @@
 import { Flyout, FlyoutRow, FlyoutButton, EditorPicker, RootChip } from "../Flyout";
-import type { ProjectInfo, GitStatus } from "../types";
+import type { ProjectInfo, GitStatus, EditorInfo } from "../types";
 
-const KINDS = ["Flutter", "TypeScript", "JavaScript", "Python", "Go", "Rust", "C#"];
+const KINDS = ["Flutter", "TypeScript", "JavaScript", "Python", "PHP", "Java", "Go", "Rust", "C#"];
 
 type Props = {
   roots: string[];
@@ -12,9 +12,16 @@ type Props = {
   prefs: Record<string, string>;
   setEditorFor: (path: string, editor: string) => void;
   openProject: (path: string) => void;
+  editors: EditorInfo[];
 };
 
-export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, prefs, setEditorFor, openProject }: Props) {
+// Editors with no `kinds` suit any project; otherwise only show the editor
+// for project kinds it was built for (e.g. Android Studio for Flutter/Java).
+function editorsForKind(editors: EditorInfo[], kind: string): EditorInfo[] {
+  return editors.filter((e) => e.kinds.length === 0 || e.kinds.includes(kind));
+}
+
+export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, prefs, setEditorFor, openProject, editors }: Props) {
   return (
     <Flyout>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -46,7 +53,7 @@ export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, 
                       </span>
                     ) : p.path
                   }
-                  actions={<EditorPicker value={prefs[p.path] ?? "vscode"} onChange={(editor) => setEditorFor(p.path, editor)} />}
+                  actions={<EditorPicker value={prefs[p.path] ?? "vscode"} onChange={(editor) => setEditorFor(p.path, editor)} editors={editorsForKind(editors, kind)} />}
                 />
               );
             })}

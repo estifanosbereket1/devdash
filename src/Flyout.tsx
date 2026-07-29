@@ -1,21 +1,32 @@
 import { ReactNode, useState } from "react";
 import { FolderOpen, X } from "lucide-react";
+import type { EditorInfo } from "./types";
 
-const EDITORS = [
-  { id: "vscode", label: "VS", color: "#519aba" },
-  { id: "zed", label: "Z", color: "#ff9f5b" },
+// Fallback shown before the machine scan resolves or if nothing was detected at all,
+// so the picker never renders empty.
+const FALLBACK_EDITORS: EditorInfo[] = [
+  { id: "vscode", label: "VS Code", command: "code", color: "#519aba", kinds: [] },
+  { id: "zed", label: "Zed", command: "zed", color: "#ff9f5b", kinds: [] },
 ];
 
-export function EditorPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+// Short glyph shown in the compact picker button, derived from the label.
+function abbreviate(label: string): string {
+  const words = label.split(/\s+/);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return label.slice(0, 2).toUpperCase();
+}
+
+export function EditorPicker({ value, onChange, editors }: { value: string; onChange: (id: string) => void; editors?: EditorInfo[] }) {
+  const list = editors && editors.length > 0 ? editors : FALLBACK_EDITORS;
   return (
-    <div style={{ display: "flex", gap: 4 }}>
-      {EDITORS.map((editor) => {
-        const active = value === editor.id;
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      {list.map((editor) => {
+        const active = value === editor.id || value === editor.command;
         return (
           <div
             key={editor.id}
             onClick={() => onChange(editor.id)}
-            title={editor.id === "vscode" ? "VS Code" : "Zed"}
+            title={editor.label}
             style={{
               width: 22,
               height: 22,
@@ -33,7 +44,7 @@ export function EditorPicker({ value, onChange }: { value: string; onChange: (id
               transition: "all 0.15s ease",
             }}
           >
-            {editor.label}
+            {abbreviate(editor.label)}
           </div>
         );
       })}

@@ -10,7 +10,7 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { useMemoryInfo, useBatteryInfo, useDiskInfo, useTemperatures } from "./hooks/useSystemStats";
 import { useManagedUnits } from "./hooks/useSystemd";
 import { useDockerContainers, useContainerActions, useDockerImages, useImageActions, useDockerVolumes, useVolumeActions } from "./hooks/useDocker";
-import { useProjectRoots, useEditorPreferences, useProjects, useGitStatuses, useEnvRisks, useBloatScan } from "./hooks/useProjects";
+import { useProjectRoots, useEditorPreferences, useProjects, useGitStatuses, useEnvRisks, useBloatScan, useInstalledEditors } from "./hooks/useProjects";
 import { usePorts } from "./hooks/usePorts";
 import { useCronJobs } from "./hooks/useCron";
 import { useNotes } from "./hooks/useNotes";
@@ -67,11 +67,16 @@ function App() {
   const projects = useProjects(roots);
   const { statuses } = useGitStatuses(projects);
   const { prefs, setEditorFor } = useEditorPreferences();
+  const editors = useInstalledEditors();
   const { risks: envRisks } = useEnvRisks(projects);
   const exposedCount = envRisks.filter((r) => !r.gitignored && r.suspicious_keys.length > 0).length;
   const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects, skipConfirmations);
 
-  const openProject = (path: string) => invoke("open_in_editor", { path, editor: prefs[path] ?? defaultEditor });
+  const openProject = (path: string) => {
+    const editorId = prefs[path] ?? defaultEditor;
+    const command = editors.find((e) => e.id === editorId)?.command ?? editorId;
+    return invoke("open_in_editor", { path, editor: command });
+  };
 
   const { ports, kill: killPort, busy: portBusy, refresh: refreshPorts } = usePorts(skipConfirmations);
   const { jobs: cronJobs, remove: removeCron, addJob: addCronJob, busy: cronBusy } = useCronJobs(skipConfirmations);
@@ -243,13 +248,13 @@ function App() {
 
           {activeDetail === "systemd" && <SystemdPanel units={units} search={unitSearch} onSearchChange={setUnitSearch} busy={unitBusy} act={actUnit} error={unitError} />}
           {activeDetail === "docker" && <DockerPanel containers={containers} images={images} volumes={volumes} actBusy={containerBusy} actContainer={actContainer} imageBusy={imageBusy} removeImage={removeImage} volumeBusy={volumeBusy} removeVolume={removeVolume} />}
-          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} />}
+          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} editors={editors} />}
           {activeDetail === "ports" && <PortsPanel ports={ports} busy={portBusy} kill={killPort} refresh={refreshPorts} />}
           {activeDetail === "settings" && (
             <SettingsPanel
               opacity={opacity} setOpacity={setOpacity}
               accent={accent} setAccent={setAccent}
-              defaultEditor={defaultEditor} setDefaultEditor={setDefaultEditor}
+              defaultEditor={defaultEditor} setDefaultEditor={setDefaultEditor} editors={editors}
               skipConfirmations={skipConfirmations} setSkipConfirmations={setSkipConfirmations}
               tabs={tabs} toggleTab={toggleTab} moveTab={moveTab} enabledCount={enabledCount}
             />

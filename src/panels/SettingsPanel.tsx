@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { confirmUnless } from "../utils";
+import type { EditorInfo } from "../types";
 
 type TabConfig = { id: TabId; enabled: boolean };
 
@@ -16,6 +17,7 @@ type Props = {
   setAccent: (v: string) => void;
   defaultEditor: string;
   setDefaultEditor: (v: string) => void;
+  editors: EditorInfo[];
   skipConfirmations: boolean;
   setSkipConfirmations: (v: boolean) => void;
   tabs: TabConfig[];
@@ -25,7 +27,7 @@ type Props = {
 };
 
 export function SettingsPanel({
-  opacity, setOpacity, accent, setAccent, defaultEditor, setDefaultEditor,
+  opacity, setOpacity, accent, setAccent, defaultEditor, setDefaultEditor, editors,
   skipConfirmations, setSkipConfirmations, tabs, toggleTab, moveTab, enabledCount,
 }: Props) {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -71,7 +73,10 @@ export function SettingsPanel({
       </div>
 
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", margin: "14px 0 6px" }}>Default Editor</div>
-      <EditorPicker value={defaultEditor} onChange={setDefaultEditor} />
+      <EditorPicker value={defaultEditor} onChange={setDefaultEditor} editors={editors} />
+      {editors.length === 0 && (
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>Scanning for installed editors…</div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
         <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Skip confirmation dialogs</span>
