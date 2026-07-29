@@ -14,6 +14,9 @@ import { useProjectRoots, useEditorPreferences, useProjects, useGitStatuses, use
 import { usePorts } from "./hooks/usePorts";
 import { useCronJobs } from "./hooks/useCron";
 import { useNotes } from "./hooks/useNotes";
+import { useJournalEntries } from "./hooks/useJournal";
+import { useSavedConnections } from "./hooks/useDatabase";
+import { useSavedRequests } from "./hooks/useRestClient";
 import { useMusicRoots, useMusicLibrary, usePlayer } from "./hooks/useMusic";
 import { useOpacitySetting, useAccentSetting, useDefaultEditor, useConfirmationsSetting } from "./hooks/useSettings";
 import { useTasks } from "./hooks/useTasks";
@@ -34,6 +37,7 @@ import { TasksPanel } from "./panels/TasksPanel";
 import { RestClientPanel } from "./panels/RestClientPanel";
 import { DatabasePanel } from "./panels/DatabasePanel";
 import { JournalPanel } from "./panels/JournalPanel";
+import { CommandPalette, type PaletteItem } from "./CommandPalette";
 
 const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database", "journal"];
 const FIXED_DETAIL_IDS = ["ram", "batt", "temp", "disk", "settings"]; // never hidden by tab config
@@ -83,6 +87,13 @@ function App() {
   const [expanded, setExpanded] = useState(false);
   const [activeDetail, setActiveDetail] = useState<string | null>(null);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState<{ panel: string; id: string } | null>(null);
+
+  const { entries: journalEntries } = useJournalEntries();
+  const { connections: remoteDbConnections } = useSavedConnections();
+  const { saved: savedRequests } = useSavedRequests();
+
   const toggleExpanded = async () => {
     const win = getCurrentWindow();
     if (!expanded) {
@@ -113,7 +124,81 @@ function App() {
     }
   }, [visibleTabs]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (!expanded) toggleExpanded();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [expanded]);
+
   const iconStyle = (id: string) => ({ cursor: "pointer" as const, opacity: activeDetail === id ? 1 : 0.5, color: activeDetail === id ? "#5eead4" : "#e8e8e8" });
+
+  const PANEL_LABELS: Record<string, string> = {
+    systemd: "Services", docker: "Docker", projects: "Projects", ports: "Ports",
+    notes: "Notes", secrets: "Secrets", bloat: "Bloat", cron: "Cron Jobs",
+    music: "Music", settings: "Settings", tasks: "Tasks", rest: "REST Client",
+    database: "Database", journal: "Journal",
+  };
+
+  const openPanel = (panel: string, id?: string) => {
+    setActiveDetail(panel);
+    if (id) setPendingOpen({ panel, id });
+  };
+
+  const paletteItems: PaletteItem[] = [
+    ...Object.entries(PANEL_LABELS).map(([id, label]) => ({
+      id: `panel-${id}`, section: "Panels", label,
+      onSelect: () => openPanel(id),
+    })),
+    ...projects.map((p) => ({
+      id: `project-${p.path}`, section: "Projects", label: p.name, sublabel: p.kind,
+      keywords: p.path,
+      onSelect: () => openProject(p.path),
+    })),
+    ...journalEntries.map((e) => ({
+      id: `journal-${e.id}`, section: "Journal", label: e.title, sublabel: e.date,
+      onSelect: () => openPanel("journal", e.id),
+    })),
+    ...remoteDbConnections.map((c) => ({
+      id: `dbconn-${c.id}`, section: "Database Connections", label: c.name,
+      sublabel: `${c.provider} · ${c.host}`,
+      onSelect: () => openPanel("database", c.id),
+    })),
+    ...savedRequests.map((r) => ({
+      id: `rest-${r.id}`, section: "Saved Requests", label: r.name, sublabel: r.method,
+      onSelect: () => openPanel("rest", r.id),
+    })),
+    ...cronJobs.map((j) => ({
+      id: `cron-${j.raw_line}`, section: "Cron Jobs", label: j.human_readable, sublabel: j.command,
+      onSelect: () => openPanel("cron"),
+    })),
+    ...tasks.map((t) => ({
+      id: `task-${t.id}`, section: "Tasks", label: t.text,
+      onSelect: () => openPanel("tasks"),
+    })),
+  ];
+
+  const paletteExtraItems = (query: string): PaletteItem[] => {
+    const killMatch = query.match(/^kill\s+(\d+)/i);
+    if (killMatch) {
+      const portNum = parseInt(killMatch[1], 10);
+      const found = ports.find((p) => p.port === portNum);
+      if (found) {
+        return [{
+          id: `action-kill-${portNum}`, section: "Actions",
+          label: `Kill process on port ${portNum}${found.process ? ` (${found.process})` : ""}`,
+          sublabel: "kill -9",
+          onSelect: () => killPort(found.pid ?? 0),
+        }];
+      }
+    }
+    return [];
+  };
 
   return (
     <div style={{ width: "100vw", height: "100vh" }}>
@@ -146,7 +231,8 @@ function App() {
               );
             })}
 
-            <SettingsIcon size={16} style={iconStyle("settings")} onClick={() => toggleDetail("settings")} />
+              <SettingsIcon size={16} style={iconStyle("settings")} onClick={() => toggleDetail("settings")} />
+              <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} extraItemsForQuery={paletteExtraItems} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 
@@ -174,9 +260,25 @@ function App() {
           {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} addJob={addCronJob} />}
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
-          {activeDetail === "rest" && <RestClientPanel />}
-          {activeDetail === "database" && <DatabasePanel />}
-          {activeDetail === "journal" && <JournalPanel />}
+          {activeDetail === "journal" && (
+            <JournalPanel
+              openEntryId={pendingOpen?.panel === "journal" ? pendingOpen.id : undefined}
+              onConsumeOpenEntry={() => setPendingOpen(null)}
+            />
+          )}
+          {activeDetail === "database" && (
+            <DatabasePanel
+              sqliteRoots={[]}
+              openConnectionId={pendingOpen?.panel === "database" ? pendingOpen.id : undefined}
+              onConsumeOpenConnection={() => setPendingOpen(null)}
+            />
+          )}
+          {activeDetail === "rest" && (
+            <RestClientPanel
+              openRequestId={pendingOpen?.panel === "rest" ? pendingOpen.id : undefined}
+              onConsumeOpenRequest={() => setPendingOpen(null)}
+            />
+          )}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDiscoveredServers, useDbBrowser, useQueryRunner, useSavedConnections } from "../hooks/useDatabase";
 import type { DiscoveredServer, DbConnection, DbProvider, SavedConnection } from "../types";
 import { Flyout, FlyoutButton } from "../Flyout";
@@ -96,7 +96,9 @@ function RemoteConnectionForm({
   );
 }
 
-export function DatabasePanel({ sqliteRoots = [] }: { sqliteRoots?: string[] }) {
+export function DatabasePanel({
+  sqliteRoots = [], openConnectionId, onConsumeOpenConnection,
+}: { sqliteRoots?: string[]; openConnectionId?: string; onConsumeOpenConnection?: () => void }) {
   const { servers, scanning, rescan } = useDiscoveredServers(sqliteRoots);
   const { tables, loading, error, loadTables, setTables } = useDbBrowser();
   const { result, running, error: queryError, runQuery } = useQueryRunner();
@@ -146,6 +148,23 @@ export function DatabasePanel({ sqliteRoots = [] }: { sqliteRoots?: string[] }) 
       setTesting(false);
     }
   };
+
+  useEffect(() => {
+      if (openConnectionId) {
+        const c = remoteConnections.find((rc) => rc.id === openConnectionId);
+        if (c) {
+          const conn: DbConnection = {
+            id: c.id, name: c.database, provider: c.provider, host: c.host, port: c.port,
+            user: c.user, password: c.password, database: c.database, sslMode: c.sslMode,
+          };
+          setActiveConn(conn);
+          setActiveDb(c.database);
+          setSql("");
+          loadTables(conn, c.database);
+        }
+        onConsumeOpenConnection?.();
+      }
+    }, [openConnectionId, remoteConnections]);
 
   return (
     <Flyout>

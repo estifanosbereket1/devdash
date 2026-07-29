@@ -84,7 +84,9 @@ function RichTextEditor({ content, onChange }: { content: string; onChange: (htm
   );
 }
 
-export function JournalPanel() {
+export function JournalPanel({
+  openEntryId, onConsumeOpenEntry,
+}: { openEntryId?: string; onConsumeOpenEntry?: () => void } = {}) {
   const { entries, addEntry, updateEntry, deleteEntry } = useJournalEntries();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -102,6 +104,13 @@ export function JournalPanel() {
     setNewTitle("");
     setActiveId(entry.id);
   };
+
+  useEffect(() => {
+     if (openEntryId) {
+       setActiveId(openEntryId);
+       onConsumeOpenEntry?.();
+     }
+   }, [openEntryId]);
 
   return (
     <Flyout>

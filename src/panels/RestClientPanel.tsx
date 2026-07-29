@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Flyout, FlyoutButton } from "../Flyout";
 import { useSavedRequests, useRequestSender } from "../hooks/useRestClient";
 import type { HttpHeader } from "../types";
@@ -156,7 +156,9 @@ function AuthTypePicker({ value, onChange }: { value: AuthType; onChange: (t: Au
   );
 }
 
-export function RestClientPanel() {
+export function RestClientPanel({
+  openRequestId, onConsumeOpenRequest,
+}: { openRequestId?: string; onConsumeOpenRequest?: () => void } = {}) {
   const { saved, saveRequest, deleteRequest } = useSavedRequests();
   const { response, sending, error, send } = useRequestSender();
 
@@ -243,6 +245,14 @@ export function RestClientPanel() {
     borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
     textTransform: "uppercase" as const,
   });
+
+  useEffect(() => {
+      if (openRequestId) {
+        const req = saved.find((r) => r.id === openRequestId);
+        if (req) loadSaved(req);
+        onConsumeOpenRequest?.();
+      }
+    }, [openRequestId, saved])
 
   return (
     <Flyout>
