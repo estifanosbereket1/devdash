@@ -21,6 +21,7 @@ import { useMusicRoots, useMusicLibrary, usePlayer } from "./hooks/useMusic";
 import { useOpacitySetting, useAccentSetting, useDefaultEditor, useConfirmationsSetting } from "./hooks/useSettings";
 import { useTasks } from "./hooks/useTasks";
 import { useTabSettings } from "./hooks/useTabSettings";
+import { usePaletteUsage } from "./hooks/usePaletteUsage";
 import { TAB_REGISTRY, type TabId } from "./tabRegistry";
 
 import { SystemdPanel } from "./panels/SystemdPanel";
@@ -98,6 +99,7 @@ function App() {
   const { entries: journalEntries } = useJournalEntries();
   const { connections: remoteDbConnections } = useSavedConnections();
   const { saved: savedRequests } = useSavedRequests();
+  const { recordUsage, scoreOf } = usePaletteUsage();
 
   const toggleExpanded = async () => {
     const win = getCurrentWindow();
@@ -160,7 +162,7 @@ function App() {
     if (id) setPendingOpen({ panel, id });
   };
 
-  const paletteItems: PaletteItem[] = [
+  const rawPaletteItems: PaletteItem[] = [
     ...Object.entries(PANEL_LABELS).map(([id, label]) => ({
       id: `panel-${id}`, section: "Panels", label,
       onSelect: () => openPanel(id),
@@ -192,6 +194,11 @@ function App() {
       onSelect: () => openPanel("tasks"),
     })),
   ];
+
+  const paletteItems: PaletteItem[] = rawPaletteItems.map((item) => ({
+    ...item,
+    onSelect: () => { recordUsage(item.id); item.onSelect(); },
+  }));
 
   const paletteExtraItems = (query: string): PaletteItem[] => {
     const killMatch = query.match(/^kill\s+(\d+)/i);
@@ -242,7 +249,7 @@ function App() {
             })}
 
               <SettingsIcon size={16} style={iconStyle("settings")} onClick={() => toggleDetail("settings")} />
-              <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} extraItemsForQuery={paletteExtraItems} />
+              <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} extraItemsForQuery={paletteExtraItems} scoreOf={scoreOf} />
             <span onClick={toggleExpanded} style={{ cursor: "pointer", marginLeft: "auto", opacity: 0.4 }}>✕</span>
           </div>
 

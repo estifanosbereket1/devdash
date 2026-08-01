@@ -22,12 +22,13 @@ function fuzzyScore(query: string, target: string): number {
 }
 
 export function CommandPalette({
-  open, onClose, items, extraItemsForQuery,
+  open, onClose, items, extraItemsForQuery, scoreOf,
 }: {
   open: boolean;
   onClose: () => void;
   items: PaletteItem[];
   extraItemsForQuery?: (query: string) => PaletteItem[];
+  scoreOf?: (id: string) => number;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -43,7 +44,16 @@ export function CommandPalette({
 
   const results = useMemo(() => {
     const extras = extraItemsForQuery?.(query) ?? [];
-    if (!query.trim()) return [...extras, ...items.slice(0, 30)];
+    if (!query.trim()) {
+      const recent = scoreOf
+        ? [...items]
+            .filter((i) => (scoreOf(i.id) ?? 0) > 0)
+            .sort((a, b) => (scoreOf(b.id) ?? 0) - (scoreOf(a.id) ?? 0))
+            .slice(0, 5)
+            .map((i) => ({ ...i, id: `recent:${i.id}`, section: "Recent" }))
+        : [];
+      return [...extras, ...recent, ...items.slice(0, 30)];
+    }
     const matched = items
       .map((item) => ({
         item,
@@ -54,7 +64,7 @@ export function CommandPalette({
       .slice(0, 30)
       .map((r) => r.item);
     return [...extras, ...matched];
-  }, [query, items, extraItemsForQuery]);
+  }, [query, items, extraItemsForQuery, scoreOf]);
 
   useEffect(() => setSelected(0), [query]);
 

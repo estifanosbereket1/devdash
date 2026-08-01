@@ -2052,6 +2052,7 @@ const BACKUP_FILES: &[&str] = &[
     "notes.json",
     "remote-db-connections.json",
     "settings.json",
+    "command-palette-usage.json",
 ];
 
 #[tauri::command]
