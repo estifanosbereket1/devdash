@@ -104,6 +104,10 @@ function App() {
     if (!expanded) {
       await win.setSize(new LogicalSize(820, 90));
       await win.setPosition(new LogicalPosition(200, 20));
+      // resizing/repositioning an always-on-top, undecorated window drops OS-level
+      // keyboard focus on most Linux WMs, so keystrokes silently go nowhere afterward.
+      // Never let this block the actual expand state change below.
+      await win.setFocus().catch(() => {});
     } else {
       await win.setSize(new LogicalSize(64, 64));
     }
@@ -115,7 +119,8 @@ function App() {
   useEffect(() => {
     if (!expanded) return;
     const isFlyout = FLYOUT_PANELS.includes(activeDetail ?? "");
-    getCurrentWindow().setSize(new LogicalSize(820, isFlyout ? 420 : activeDetail ? 150 : 90));
+    const win = getCurrentWindow();
+    win.setSize(new LogicalSize(820, isFlyout ? 420 : activeDetail ? 150 : 90)).then(() => win.setFocus().catch(() => {}));
   }, [activeDetail, expanded]);
 
   useEffect(() => {
@@ -183,7 +188,7 @@ function App() {
       onSelect: () => openPanel("cron"),
     })),
     ...tasks.map((t) => ({
-      id: `task-${t.id}`, section: "Tasks", label: t.text,
+      id: `task-${t.id}`, section: "Tasks", label: t.title,
       onSelect: () => openPanel("tasks"),
     })),
   ];
@@ -198,7 +203,7 @@ function App() {
           id: `action-kill-${portNum}`, section: "Actions",
           label: `Kill process on port ${portNum}${found.process ? ` (${found.process})` : ""}`,
           sublabel: "kill -9",
-          onSelect: () => killPort(found.pid ?? 0),
+          onSelect: () => killPort(found.pid ?? 0, found.process ?? `port ${portNum}`),
         }];
       }
     }
