@@ -115,6 +115,7 @@ function App() {
       // keyboard focus on most Linux WMs, so keystrokes silently go nowhere afterward.
       // Never let this block the actual expand state change below.
       await win.setFocus().catch(() => {});
+      setActiveDetail(visibleTabs[0] ?? null);
     } else {
       await win.setSize(new LogicalSize(64, 64));
     }

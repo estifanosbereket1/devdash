@@ -1,6 +1,7 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 mod system_stats;
 use system_stats::*;
@@ -22,6 +23,39 @@ mod database;
 use database::*;
 mod music;
 use music::*;
+
+// Mirrors what scripts/uninstall.sh does — kept in sync manually since this
+// runs from a bare installed binary that has no access to the git repo/scripts.
+// Deliberately leaves app data (settings/notes/tasks/etc.) untouched.
+fn uninstall_self() {
+    let Ok(home) = std::env::var("HOME") else {
+        return;
+    };
+    let app_id = "com.estifanos.devdash";
+
+    let _ = std::fs::remove_file(format!("{home}/.local/bin/devdash"));
+    let _ = std::fs::remove_file(format!(
+        "{home}/.local/share/icons/hicolor/128x128/apps/devdash.png"
+    ));
+    let _ = std::fs::remove_file(format!(
+        "{home}/.local/share/icons/hicolor/256x256/apps/devdash.png"
+    ));
+    let _ = std::fs::remove_file(format!(
+        "{home}/.local/share/applications/{app_id}.desktop"
+    ));
+    let _ = std::fs::remove_file(format!("{home}/.config/autostart/{app_id}.desktop"));
+
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(format!("{home}/.local/share/applications"))
+        .status();
+    let _ = std::process::Command::new("gtk-update-icon-cache")
+        .args([
+            "-f",
+            "-t",
+            &format!("{home}/.local/share/icons/hicolor"),
+        ])
+        .status();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -83,8 +117,9 @@ pub fn run() {
         .setup(|app| {
             // Build the right-click menu items
             let show_item = MenuItem::with_id(app, "show", "Show Dashboard", true, None::<&str>)?;
+            let uninstall_item = MenuItem::with_id(app, "uninstall", "Uninstall", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &uninstall_item, &quit_item])?;
 
             // Build the tray icon itself, reusing the app's default icon
             let _tray = TrayIconBuilder::new()
@@ -96,6 +131,20 @@ pub fn run() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
+                    }
+                    "uninstall" => {
+                        let handle = app.clone();
+                        app.dialog()
+                            .message("This removes devdash from your applications, dock, and autostart. Your notes, tasks, and settings are kept.")
+                            .title("Uninstall devdash?")
+                            .kind(MessageDialogKind::Warning)
+                            .buttons(MessageDialogButtons::OkCancelCustom("Uninstall".into(), "Cancel".into()))
+                            .show(move |confirmed| {
+                                if confirmed {
+                                    uninstall_self();
+                                    handle.exit(0);
+                                }
+                            });
                     }
                     "quit" => {
                         app.exit(0);
