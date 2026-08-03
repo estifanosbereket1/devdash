@@ -42,7 +42,16 @@ export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, 
               return (
                 <FlyoutRow
                   key={p.path}
-                  title={<span onClick={() => openProject(p.path)} style={{ cursor: "pointer" }}>{p.name}</span>}
+                  title={
+                    <span onClick={() => openProject(p.path)} style={{ cursor: "pointer" }}>
+                      {p.name}
+                      {p.has_compose && (
+                        <span style={{ marginLeft: 6, fontSize: 9, padding: "1px 5px", borderRadius: 4, background: "rgba(94,234,212,0.15)", color: "#5eead4" }}>
+                          stack
+                        </span>
+                      )}
+                    </span>
+                  }
                   subtitle={
                     git ? (
                       <span>

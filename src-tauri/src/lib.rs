@@ -565,6 +565,18 @@ struct ProjectInfo {
     name: String,
     path: String,
     kind: String,
+    has_compose: bool,
+}
+
+const COMPOSE_FILENAMES: &[&str] = &[
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+];
+
+fn has_compose_file(dir: &Path) -> bool {
+    COMPOSE_FILENAMES.iter().any(|f| dir.join(f).exists())
 }
 
 fn detect_kind(dir: &Path) -> Option<String> {
@@ -635,6 +647,7 @@ fn scan_dir(dir: &Path, depth: u8, max_depth: u8, results: &mut Vec<ProjectInfo>
                 .to_string(),
             path: dir.to_string_lossy().to_string(),
             kind,
+            has_compose: has_compose_file(dir),
         });
         return; // found a project here — don't recurse into its internals
     }
@@ -680,6 +693,34 @@ fn open_in_editor(path: String, editor: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to launch {binary}: {e}"))?;
     Ok(())
+}
+
+#[tauri::command]
+fn compose_up(project_path: String) -> Result<(), String> {
+    let status = std::process::Command::new("docker")
+        .args(["compose", "up", "-d"])
+        .current_dir(&project_path)
+        .status()
+        .map_err(|e| format!("failed to run docker compose up: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("docker compose up exited with status: {status}"))
+    }
+}
+
+#[tauri::command]
+fn compose_down(project_path: String) -> Result<(), String> {
+    let status = std::process::Command::new("docker")
+        .args(["compose", "down"])
+        .current_dir(&project_path)
+        .status()
+        .map_err(|e| format!("failed to run docker compose down: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("docker compose down exited with status: {status}"))
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
