@@ -2185,6 +2185,8 @@ pub fn run() {
             list_volumes,
             remove_volume,
             scan_projects,
+            compose_up,
+            compose_down,
             open_in_editor,
             detect_editors,
             list_ports,

@@ -80,6 +80,31 @@ export function useProjects(roots: string[]) {
   return projects;
 }
 
+export function useComposeActions(onDone?: () => void) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (command: "compose_up" | "compose_down", path: string) => {
+    setBusy(path);
+    setError(null);
+    try {
+      await invoke(command, { projectPath: path });
+      onDone?.();
+    } catch (e) {
+      setError(e as string);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return {
+    up: (path: string) => run("compose_up", path),
+    down: (path: string) => run("compose_down", path),
+    busy,
+    error,
+  };
+}
+
 export function useGitStatuses(projects: ProjectInfo[]) {
   const [statuses, setStatuses] = useState<Record<string, GitStatus>>({});
 

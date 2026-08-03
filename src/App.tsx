@@ -10,7 +10,7 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { useMemoryInfo, useBatteryInfo, useDiskInfo, useTemperatures } from "./hooks/useSystemStats";
 import { useManagedUnits } from "./hooks/useSystemd";
 import { useDockerContainers, useContainerActions, useDockerImages, useImageActions, useDockerVolumes, useVolumeActions } from "./hooks/useDocker";
-import { useProjectRoots, useEditorPreferences, useProjects, useGitStatuses, useEnvRisks, useBloatScan, useInstalledEditors } from "./hooks/useProjects";
+import { useProjectRoots, useEditorPreferences, useProjects, useGitStatuses, useEnvRisks, useBloatScan, useInstalledEditors, useComposeActions } from "./hooks/useProjects";
 import { usePorts } from "./hooks/usePorts";
 import { useCronJobs } from "./hooks/useCron";
 import { useNotes } from "./hooks/useNotes";
@@ -72,6 +72,7 @@ function App() {
   const { risks: envRisks } = useEnvRisks(projects);
   const exposedCount = envRisks.filter((r) => !r.gitignored && r.suspicious_keys.length > 0).length;
   const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects, skipConfirmations);
+  const { up: composeUp, down: composeDown, busy: composeBusy } = useComposeActions(refreshContainers);
 
   const openProject = (path: string) => {
     const editorId = prefs[path] ?? defaultEditor;
@@ -260,7 +261,7 @@ function App() {
 
           {activeDetail === "systemd" && <SystemdPanel units={units} search={unitSearch} onSearchChange={setUnitSearch} busy={unitBusy} act={actUnit} error={unitError} />}
           {activeDetail === "docker" && <DockerPanel containers={containers} images={images} volumes={volumes} actBusy={containerBusy} actContainer={actContainer} imageBusy={imageBusy} removeImage={removeImage} volumeBusy={volumeBusy} removeVolume={removeVolume} />}
-          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} editors={editors} />}
+          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} editors={editors} composeUp={composeUp} composeDown={composeDown} composeBusy={composeBusy} />}
           {activeDetail === "ports" && <PortsPanel ports={ports} busy={portBusy} kill={killPort} refresh={refreshPorts} />}
           {activeDetail === "settings" && (
             <SettingsPanel

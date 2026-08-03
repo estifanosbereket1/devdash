@@ -13,6 +13,9 @@ type Props = {
   setEditorFor: (path: string, editor: string) => void;
   openProject: (path: string) => void;
   editors: EditorInfo[];
+  composeUp: (path: string) => void;
+  composeDown: (path: string) => void;
+  composeBusy: string | null;
 };
 
 // Editors with no `kinds` suit any project; otherwise only show the editor
@@ -21,7 +24,7 @@ function editorsForKind(editors: EditorInfo[], kind: string): EditorInfo[] {
   return editors.filter((e) => e.kinds.length === 0 || e.kinds.includes(kind));
 }
 
-export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, prefs, setEditorFor, openProject, editors }: Props) {
+export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, prefs, setEditorFor, openProject, editors, composeUp, composeDown, composeBusy }: Props) {
   return (
     <Flyout>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -62,7 +65,17 @@ export function ProjectsPanel({ roots, addRoot, removeRoot, projects, statuses, 
                       </span>
                     ) : p.path
                   }
-                  actions={<EditorPicker value={prefs[p.path] ?? "vscode"} onChange={(editor) => setEditorFor(p.path, editor)} editors={editorsForKind(editors, kind)} />}
+                  actions={
+                    <>
+                      {p.has_compose && (
+                        <>
+                          <FlyoutButton disabled={composeBusy === p.path} onClick={() => composeUp(p.path)}>up</FlyoutButton>
+                          <FlyoutButton disabled={composeBusy === p.path} onClick={() => composeDown(p.path)}>down</FlyoutButton>
+                        </>
+                      )}
+                      <EditorPicker value={prefs[p.path] ?? "vscode"} onChange={(editor) => setEditorFor(p.path, editor)} editors={editorsForKind(editors, kind)} />
+                    </>
+                  }
                 />
               );
             })}
