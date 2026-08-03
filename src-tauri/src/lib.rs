@@ -1267,6 +1267,84 @@ async fn send_http_request(
     })
 }
 
+#[derive(serde::Serialize, Clone)]
+struct TunnelInfo {
+    provider: String,           // "ngrok" | "cloudflared"
+    public_url: Option<String>, // Some(url) for ngrok; None for cloudflared (can't be determined)
+    local_addr: Option<String>, // ngrok's forwarded target, e.g. "localhost:3000"
+    proto: Option<String>,      // ngrok only, e.g. "https"
+    status: String,
+}
+
+#[derive(serde::Deserialize)]
+struct NgrokTunnelsResponse {
+    tunnels: Vec<NgrokTunnel>,
+}
+#[derive(serde::Deserialize)]
+struct NgrokTunnel {
+    public_url: String,
+    proto: String,
+    config: NgrokTunnelConfig,
+}
+#[derive(serde::Deserialize)]
+struct NgrokTunnelConfig {
+    addr: String,
+}
+
+async fn list_ngrok_tunnels() -> Result<Vec<TunnelInfo>, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("http://127.0.0.1:4040/api/tunnels")
+        .timeout(Duration::from_millis(500))
+        .send()
+        .await;
+
+    // connection refused/timeout just means ngrok isn't running — empty result, not an error
+    let Ok(response) = response else {
+        return Ok(Vec::new());
+    };
+
+    let parsed: NgrokTunnelsResponse = response.json().await.map_err(|e| e.to_string())?;
+    Ok(parsed
+        .tunnels
+        .into_iter()
+        .map(|t| TunnelInfo {
+            provider: "ngrok".to_string(),
+            public_url: Some(t.public_url),
+            local_addr: Some(t.config.addr),
+            proto: Some(t.proto),
+            status: "running".to_string(),
+        })
+        .collect())
+}
+
+fn list_cloudflared_tunnels() -> Vec<TunnelInfo> {
+    let sys = System::new_all();
+    let running = sys
+        .processes()
+        .values()
+        .any(|p| p.name().to_string_lossy().to_lowercase().contains("cloudflared"));
+
+    if running {
+        vec![TunnelInfo {
+            provider: "cloudflared".to_string(),
+            public_url: None,
+            local_addr: None,
+            proto: None,
+            status: "running (public URL not detectable)".to_string(),
+        }]
+    } else {
+        Vec::new()
+    }
+}
+
+#[tauri::command]
+async fn list_tunnels() -> Result<Vec<TunnelInfo>, String> {
+    let mut result = list_ngrok_tunnels().await?;
+    result.extend(list_cloudflared_tunnels());
+    Ok(result)
+}
+
 fn build_connection_url(
     provider: &str,
     host: &str,
@@ -2215,6 +2293,7 @@ pub fn run() {
             get_playback_position,
             seek_playback,
             send_http_request,
+            list_tunnels,
             test_db_connection,
             list_databases,
             list_tables,

@@ -91,6 +91,14 @@ export type SavedConnection = {
   sslMode?: string
 };
 
+export type TunnelInfo = {
+  provider: string;
+  public_url: string | null;
+  local_addr: string | null;
+  proto: string | null;
+  status: string;
+};
+
 export type JournalEntry = {
   id: string;
   title: string;

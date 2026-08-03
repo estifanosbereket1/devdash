@@ -15,6 +15,7 @@ import { usePorts } from "./hooks/usePorts";
 import { useCronJobs } from "./hooks/useCron";
 import { useNotes } from "./hooks/useNotes";
 import { useJournalEntries } from "./hooks/useJournal";
+import { useTunnels } from "./hooks/useTunnels";
 import { useSavedConnections } from "./hooks/useDatabase";
 import { useSavedRequests } from "./hooks/useRestClient";
 import { useMusicRoots, useMusicLibrary, usePlayer } from "./hooks/useMusic";
@@ -38,9 +39,10 @@ import { TasksPanel } from "./panels/TasksPanel";
 import { RestClientPanel } from "./panels/RestClientPanel";
 import { DatabasePanel } from "./panels/DatabasePanel";
 import { JournalPanel } from "./panels/JournalPanel";
+import { TunnelsPanel } from "./panels/TunnelsPanel";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 
-const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database", "journal"];
+const FLYOUT_PANELS = ["systemd", "docker", "projects", "ports", "notes", "secrets", "bloat", "cron", "music", "settings", "tasks", "rest", "database", "journal", "tunnels"];
 const FIXED_DETAIL_IDS = ["ram", "batt", "temp", "disk", "settings"]; // never hidden by tab config
 
 function App() {
@@ -98,6 +100,7 @@ function App() {
   const [pendingOpen, setPendingOpen] = useState<{ panel: string; id: string } | null>(null);
 
   const { entries: journalEntries } = useJournalEntries();
+  const { tunnels, error: tunnelError } = useTunnels();
   const { connections: remoteDbConnections } = useSavedConnections();
   const { saved: savedRequests } = useSavedRequests();
   const { recordUsage, scoreOf } = usePaletteUsage();
@@ -155,7 +158,7 @@ function App() {
     systemd: "Services", docker: "Docker", projects: "Projects", ports: "Ports",
     notes: "Notes", secrets: "Secrets", bloat: "Bloat", cron: "Cron Jobs",
     music: "Music", settings: "Settings", tasks: "Tasks", rest: "REST Client",
-    database: "Database", journal: "Journal",
+    database: "Database", journal: "Journal", tunnels: "Tunnels",
   };
 
   const openPanel = (panel: string, id?: string) => {
@@ -278,6 +281,7 @@ function App() {
           {activeDetail === "cron" && <CronPanel jobs={cronJobs} busy={cronBusy} remove={removeCron} addJob={addCronJob} />}
           {activeDetail === "music" && <MusicPanel musicRoots={musicRoots} addMusicRoot={addMusicRoot} removeMusicRoot={removeMusicRoot} tracks={tracks} scanLibrary={scanLibrary} scanning={musicScanning} {...player} />}
           {activeDetail === "tasks" && <TasksPanel tasks={tasks} addTask={addTask} toggleTask={toggleTask} deleteTask={deleteTask} />}
+          {activeDetail === "tunnels" && <TunnelsPanel tunnels={tunnels} error={tunnelError} />}
           {activeDetail === "journal" && (
             <JournalPanel
               openEntryId={pendingOpen?.panel === "journal" ? pendingOpen.id : undefined}
