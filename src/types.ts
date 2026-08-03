@@ -16,7 +16,7 @@ export type UnitInfo = {
   active_state: string;
   sub_state: string;
 };
-export type ContainerInfo = { id: string; name: string; image: string; status: string; state: string };
+export type ContainerInfo = { id: string; name: string; image: string; status: string; state: string; compose_project: string | null };
 export type ImageInfo = { id: string; tags: string[]; size_mb: number };
 export type VolumeInfo = { name: string; driver: string; mount_point: string };
 export type GitStatus = { branch: string; dirty: boolean; ahead: number; behind: number; has_remote: boolean };

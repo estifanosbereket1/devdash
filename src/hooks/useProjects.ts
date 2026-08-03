@@ -80,12 +80,14 @@ export function useProjects(roots: string[]) {
   return projects;
 }
 
+export type ComposeBusy = { path: string; action: "up" | "down" } | null;
+
 export function useComposeActions(onDone?: () => void) {
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<ComposeBusy>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async (command: "compose_up" | "compose_down", path: string) => {
-    setBusy(path);
+  const run = async (command: "compose_up" | "compose_down", action: "up" | "down", path: string) => {
+    setBusy({ path, action });
     setError(null);
     try {
       await invoke(command, { projectPath: path });
@@ -98,8 +100,8 @@ export function useComposeActions(onDone?: () => void) {
   };
 
   return {
-    up: (path: string) => run("compose_up", path),
-    down: (path: string) => run("compose_down", path),
+    up: (path: string) => run("compose_up", "up", path),
+    down: (path: string) => run("compose_down", "down", path),
     busy,
     error,
   };

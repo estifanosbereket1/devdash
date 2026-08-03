@@ -419,6 +419,7 @@ struct ContainerInfo {
     image: String,
     status: String,
     state: String,
+    compose_project: Option<String>,
 }
 
 #[tauri::command]
@@ -449,6 +450,10 @@ async fn list_containers() -> Result<Vec<ContainerInfo>, String> {
             image: c.image.unwrap_or_default(),
             status: c.status.unwrap_or_default(),
             state: c.state.map(|s| s.to_string()).unwrap_or_default(),
+            compose_project: c
+                .labels
+                .as_ref()
+                .and_then(|l| l.get("com.docker.compose.project").cloned()),
         })
         .collect())
 }
@@ -606,6 +611,10 @@ fn detect_kind(dir: &Path) -> Option<String> {
         || dir.join("build.gradle.kts").exists()
     {
         Some("Java".to_string())
+    } else if has_compose_file(dir) {
+        // infra-only folder (no app source at this level) but still worth surfacing
+        // so its compose stack isn't invisible to the scanner
+        Some("Docker".to_string())
     } else {
         None
     }

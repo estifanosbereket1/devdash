@@ -57,7 +57,7 @@ function App() {
   const { units, error: unitError, busy: unitBusy, act: actUnit } = useManagedUnits();
   const [unitSearch, setUnitSearch] = useState("");
 
-  const { containers, refresh: refreshContainers } = useDockerContainers();
+  const { containers, error: dockerError, refresh: refreshContainers } = useDockerContainers();
   const { act: actContainer, busy: containerBusy } = useContainerActions(refreshContainers, skipConfirmations);
   const { images, refresh: refreshImages } = useDockerImages();
   const { removeImage, busy: imageBusy } = useImageActions(refreshImages, skipConfirmations);
@@ -72,7 +72,7 @@ function App() {
   const { risks: envRisks } = useEnvRisks(projects);
   const exposedCount = envRisks.filter((r) => !r.gitignored && r.suspicious_keys.length > 0).length;
   const { entries: bloatEntries, scan: scanBloat, scanning: bloatScanning, prune: pruneBloat, busy: bloatBusy } = useBloatScan(projects, skipConfirmations);
-  const { up: composeUp, down: composeDown, busy: composeBusy } = useComposeActions(refreshContainers);
+  const { up: composeUp, down: composeDown, busy: composeBusy, error: composeError } = useComposeActions(refreshContainers);
 
   const openProject = (path: string) => {
     const editorId = prefs[path] ?? defaultEditor;
@@ -260,8 +260,8 @@ function App() {
           {activeDetail === "disk" && <DetailPanel rows={disks.map((d) => ({ label: d.mount_point, value: `${d.free_gb.toFixed(0)}G free` }))} />}
 
           {activeDetail === "systemd" && <SystemdPanel units={units} search={unitSearch} onSearchChange={setUnitSearch} busy={unitBusy} act={actUnit} error={unitError} />}
-          {activeDetail === "docker" && <DockerPanel containers={containers} images={images} volumes={volumes} actBusy={containerBusy} actContainer={actContainer} imageBusy={imageBusy} removeImage={removeImage} volumeBusy={volumeBusy} removeVolume={removeVolume} />}
-          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} editors={editors} composeUp={composeUp} composeDown={composeDown} composeBusy={composeBusy} />}
+          {activeDetail === "docker" && <DockerPanel containers={containers} images={images} volumes={volumes} actBusy={containerBusy} actContainer={actContainer} imageBusy={imageBusy} removeImage={removeImage} volumeBusy={volumeBusy} removeVolume={removeVolume} error={dockerError} />}
+          {activeDetail === "projects" && <ProjectsPanel roots={roots} addRoot={addRoot} removeRoot={removeRoot} projects={projects} statuses={statuses} prefs={prefs} setEditorFor={setEditorFor} openProject={openProject} editors={editors} composeUp={composeUp} composeDown={composeDown} composeBusy={composeBusy} composeError={composeError} containers={containers} />}
           {activeDetail === "ports" && <PortsPanel ports={ports} busy={portBusy} kill={killPort} refresh={refreshPorts} />}
           {activeDetail === "settings" && (
             <SettingsPanel
