@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
+import devdashIcon from "./assets/devdash-icon.png";
 
 import { DetailPanel, Dial } from "./Dial";
 import { Settings as SettingsIcon } from "lucide-react";
@@ -225,7 +226,7 @@ function App() {
     <div style={{ width: "100vw", height: "100vh" }}>
       {!expanded ? (
         <div className="orb" data-tauri-drag-region>
-          <span onClick={toggleExpanded} style={{ cursor: "pointer" }}>⚙</span>
+          <img src={devdashIcon} onClick={toggleExpanded} alt="" style={{ width: 32, height: 32, cursor: "pointer" }} />
         </div>
       ) : (
         <div className="dock" style={{ flexDirection: "column", alignItems: "stretch", padding: 0 }}>
