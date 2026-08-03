@@ -1,7 +1,5 @@
 import { Flyout, FlyoutRow } from "../Flyout";
 import type { EnvRisk } from "../types";
-import { ChevronUp, ChevronDown } from "lucide-react";
-
 
 export function SecretsPanel({ risks }: { risks: EnvRisk[] }) {
   return (

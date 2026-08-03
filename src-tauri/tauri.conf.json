@@ -37,6 +37,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Floating developer dashboard for Linux",
+    "longDescription": "A floating always-on-top dashboard for Linux developers: systemd units, Docker, project scanning with Compose awareness, ports, cron jobs, a REST client, a database client, a tunnel viewer, notes, tasks, and a journal, all behind a command palette.",
+    "homepage": "https://github.com/estifanosbereket1/devdash",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "templates/deb-desktop.hbs"
+      }
+    }
   }
 }

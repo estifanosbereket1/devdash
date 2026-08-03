@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Flyout, FlyoutButton } from "../Flyout";
 import { useJournalEntries } from "../hooks/useJournal";
-import type { JournalEntry } from "../types";
 import {
   Bold, Italic, Underline, List, ListOrdered, Heading1, Heading2, Quote, Eraser,
 } from "lucide-react";
