@@ -14,6 +14,14 @@ edition = "2021"
 name = "devdash_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Without this, a built binary still tries to load the dev server URL
+# (http://localhost:1420) instead of the bundled frontend — this is what
+# `tauri dev` normally manages for you, but a plain `cargo build` needs it
+# enabled explicitly for a production/installed binary to actually work.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
